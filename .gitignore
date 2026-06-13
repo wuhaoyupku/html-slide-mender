@@ -4,3 +4,8 @@ extension/node_modules/
 .idea/
 *.log
 *.tmp
+release/
+
+# Generated editable/demo outputs
+examples/*.editable.html
+examples/*.mender.editable.html
