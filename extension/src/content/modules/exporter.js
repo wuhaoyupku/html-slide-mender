@@ -433,7 +433,7 @@ async fetchStylesheetText(href, baseHref) {
 
       try {
         const response = await fetch(absolute, {
-          credentials: "include",
+          credentials: "omit",
           cache: "force-cache"
         });
         if (!response.ok) {
@@ -593,7 +593,7 @@ async resourceAsDataUrl(value, baseHref, cache) {
 
       try {
         const response = await fetch(absolute, {
-          credentials: "include",
+          credentials: "omit",
           cache: "force-cache"
         });
         if (!response.ok) {

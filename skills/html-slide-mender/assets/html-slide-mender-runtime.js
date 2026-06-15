@@ -250,10 +250,7 @@
       redo: "重做",
       rescan: "重新识别",
       boxes: "编辑框",
-      saveMode: "保存",
       saveDraft: "保存草稿",
-      basicHtml: "基础 HTML",
-      fullHtml: "完整 HTML",
       download: "下载 HTML",
       exit: "退出",
       size: "字号",
@@ -313,10 +310,7 @@
       redo: "Redo",
       rescan: "Rescan",
       boxes: "Boxes",
-      saveMode: "Save",
       saveDraft: "Save draft",
-      basicHtml: "Basic HTML",
-      fullHtml: "Full HTML",
       download: "Download HTML",
       exit: "Exit",
       size: "Size",
@@ -1377,8 +1371,8 @@ setExportMode(mode) {
       return this.exportMode;
     },
 
-normalizeExportMode(mode) {
-      return mode === "full" ? "full" : "basic";
+normalizeExportMode(_mode) {
+      return "basic";
     },
 
 async toggleLanguage() {
@@ -2810,12 +2804,6 @@ template() {
               <button type="button" data-action="rescan">${escapeHtml(this.t("rescan"))}</button>
               <button type="button" data-action="toggle-boxes">${escapeHtml(this.t("boxes"))}</button>
               <button type="button" data-action="language">${escapeHtml(this.t("language"))}</button>
-              <label class="save-mode">${escapeHtml(this.t("saveMode"))}
-                <select data-control="exportMode" title="${escapeAttr(this.t("saveMode"))}">
-                  <option value="basic">${escapeHtml(this.t("basicHtml"))}</option>
-                  <option value="full">${escapeHtml(this.t("fullHtml"))}</option>
-                </select>
-              </label>
               ${this.isDraftEnabled?.() ? `<button type="button" data-action="save-draft">${escapeHtml(this.t("saveDraft"))}</button>` : ""}
               <button class="primary" type="button" data-action="download">${escapeHtml(this.t("download"))}</button>
               <button type="button" data-action="exit">${escapeHtml(this.t("exit"))}</button>
@@ -4402,18 +4390,13 @@ async download(options = {}) {
       };
     },
 
-async serializeCleanHtml(mode = "basic") {
-      const exportMode = this.normalizeExportMode?.(mode) || "basic";
+async serializeCleanHtml(_mode = "basic") {
       const skillSourceHtml = window.__HTML_SLIDE_MENDER_SKILL_SOURCE_HTML;
-      if (exportMode === "basic" && typeof skillSourceHtml === "string" && skillSourceHtml.trim()) {
+      if (typeof skillSourceHtml === "string" && skillSourceHtml.trim()) {
         return this.serializeSourceBasedHtml(skillSourceHtml);
       }
 
-      const styleEntries = exportMode === "full"
-        ? await this.collectExportStyleEntries()
-        : [];
       const clone = document.documentElement.cloneNode(true);
-      this.clearExportStyleMarkers(styleEntries);
       const editorRoot = clone.querySelector(`#${ROOT_ID}`);
       editorRoot?.remove();
       this.sanitizeSerializedClone?.(clone);
@@ -4422,12 +4405,6 @@ async serializeCleanHtml(mode = "basic") {
         element.remove();
       }
       this.removeSkillInjectionComments(clone);
-
-      if (exportMode === "full") {
-        this.inlineExportStyles(clone, styleEntries);
-        await this.bundleExportResources(clone);
-        this.normalizeExportUrls(clone);
-      }
 
       const doctype = document.doctype
         ? `<!DOCTYPE ${document.doctype.name}${document.doctype.publicId ? ` PUBLIC "${document.doctype.publicId}"` : ""}${document.doctype.systemId ? ` "${document.doctype.systemId}"` : ""}>`
@@ -4700,342 +4677,6 @@ removeSkillInjectionComments(clone) {
       for (const comment of comments) {
         comment.remove();
       }
-    },
-
-async collectExportStyleEntries() {
-      const entries = [];
-      const seen = new Set();
-      let index = 0;
-
-      for (const sheet of Array.from(document.styleSheets || [])) {
-        if (!sheet || seen.has(sheet)) {
-          continue;
-        }
-        seen.add(sheet);
-
-        const ownerNode = sheet.ownerNode;
-        if (ownerNode?.nodeType === Node.ELEMENT_NODE && ownerNode.closest?.(`#${ROOT_ID}`)) {
-          continue;
-        }
-
-        const marker = `hsm-export-style-${index++}`;
-        const href = sheet.href || ownerNode?.getAttribute?.("href") || "";
-        const baseHref = sheet.href || ownerNode?.baseURI || document.baseURI;
-        if (ownerNode?.nodeType === Node.ELEMENT_NODE) {
-          ownerNode.setAttribute("data-hsm-export-style-id", marker);
-        }
-
-        const cssText = this.readStylesheetText(sheet, baseHref, new Set()) ||
-          await this.fetchStylesheetText(href, baseHref);
-
-        entries.push({
-          marker,
-          ownerNode,
-          href,
-          media: ownerNode?.getAttribute?.("media") || "",
-          disabled: Boolean(sheet.disabled || ownerNode?.disabled),
-          cssText
-        });
-      }
-
-      for (const sheet of Array.from(document.adoptedStyleSheets || [])) {
-        if (!sheet || seen.has(sheet)) {
-          continue;
-        }
-        seen.add(sheet);
-        entries.push({
-          marker: `hsm-export-adopted-${index++}`,
-          ownerNode: null,
-          href: "",
-          media: "",
-          disabled: false,
-          cssText: this.readStylesheetText(sheet, document.baseURI, new Set())
-        });
-      }
-
-      return entries;
-    },
-
-async fetchStylesheetText(href, baseHref) {
-      const absolute = this.absoluteUrl(href, baseHref);
-      if (!absolute || this.isNonPortableUrl(absolute)) {
-        return null;
-      }
-
-      try {
-        const response = await fetch(absolute, {
-          credentials: "include",
-          cache: "force-cache"
-        });
-        if (!response.ok) {
-          return null;
-        }
-        return this.rewriteCssUrls(await response.text(), absolute);
-      } catch (_error) {
-        return null;
-      }
-    },
-
-clearExportStyleMarkers(entries) {
-      for (const entry of entries) {
-        entry.ownerNode?.removeAttribute?.("data-hsm-export-style-id");
-      }
-    },
-
-readStylesheetText(sheet, baseHref, seen) {
-      if (!sheet || seen.has(sheet)) {
-        return "";
-      }
-      seen.add(sheet);
-
-      let rules;
-      try {
-        rules = Array.from(sheet.cssRules || []);
-      } catch (_error) {
-        return null;
-      }
-
-      return rules.map((rule) => {
-        if (rule.type === CSSRule.IMPORT_RULE && rule.styleSheet) {
-          const imported = this.readStylesheetText(rule.styleSheet, rule.href || baseHref, seen);
-          if (imported) {
-            const media = rule.media?.mediaText;
-            return media ? `@media ${media} {\n${imported}\n}` : imported;
-          }
-        }
-        return this.rewriteCssUrls(rule.cssText || "", baseHref);
-      }).join("\n");
-    },
-
-inlineExportStyles(clone, entries) {
-      const head = clone.querySelector("head") || clone;
-      for (const entry of entries) {
-        const target = entry.ownerNode
-          ? clone.querySelector(`[data-hsm-export-style-id="${entry.marker}"]`)
-          : null;
-
-        if (entry.disabled || !entry.cssText) {
-          if (target) {
-            target.removeAttribute("data-hsm-export-style-id");
-          }
-          continue;
-        }
-
-        const style = clone.ownerDocument.createElement("style");
-        style.setAttribute("data-hsm-export-source", entry.href ? this.absoluteUrl(entry.href, document.baseURI) : "inline");
-        if (entry.media) {
-          style.setAttribute("media", entry.media);
-        }
-        style.textContent = entry.cssText;
-
-        if (target) {
-          target.replaceWith(style);
-        } else {
-          head.appendChild(style);
-        }
-      }
-    },
-
-async bundleExportResources(clone) {
-      const cache = new Map();
-      const imageAttributes = [
-        ["img", "src"],
-        ["input", "src"],
-        ["source", "src"],
-        ["video", "poster"],
-        ["image", "href"]
-      ];
-
-      for (const [selector, attr] of imageAttributes) {
-        for (const element of clone.querySelectorAll(`${selector}[${attr}]`)) {
-          const dataUrl = await this.resourceAsDataUrl(element.getAttribute(attr), document.baseURI, cache);
-          if (dataUrl) {
-            element.setAttribute(attr, dataUrl);
-          }
-        }
-      }
-
-      for (const element of clone.querySelectorAll("image")) {
-        const href = element.getAttribute("xlink:href");
-        const dataUrl = await this.resourceAsDataUrl(href, document.baseURI, cache);
-        if (dataUrl) {
-          element.setAttribute("xlink:href", dataUrl);
-        }
-      }
-
-      for (const element of clone.querySelectorAll("[srcset]")) {
-        element.setAttribute("srcset", await this.bundleSrcset(element.getAttribute("srcset"), document.baseURI, cache));
-      }
-
-      for (const element of clone.querySelectorAll("[style]")) {
-        element.setAttribute("style", await this.bundleCssUrls(element.getAttribute("style"), document.baseURI, cache));
-      }
-
-      for (const style of clone.querySelectorAll("style")) {
-        style.textContent = await this.bundleCssUrls(style.textContent || "", document.baseURI, cache);
-      }
-    },
-
-async bundleSrcset(value, baseHref, cache) {
-      const candidates = [];
-      for (const candidate of String(value || "").split(",")) {
-        const parts = candidate.trim().split(/\s+/);
-        if (!parts[0]) {
-          continue;
-        }
-        const dataUrl = await this.resourceAsDataUrl(parts[0], baseHref, cache);
-        candidates.push([dataUrl || this.absoluteUrl(parts[0], baseHref), ...parts.slice(1)].join(" "));
-      }
-      return candidates.join(", ");
-    },
-
-async bundleCssUrls(cssText, baseHref, cache) {
-      const text = String(cssText || "");
-      const pattern = /url\(\s*(['"]?)(.*?)\1\s*\)/gi;
-      let result = "";
-      let lastIndex = 0;
-
-      for (const match of text.matchAll(pattern)) {
-        result += text.slice(lastIndex, match.index);
-        const rawUrl = match[2];
-        const url = String(rawUrl || "").trim();
-        if (!url || this.isNonPortableUrl(url)) {
-          result += match[0];
-        } else {
-          const dataUrl = await this.resourceAsDataUrl(url, baseHref, cache);
-          const nextUrl = dataUrl || this.absoluteUrl(url, baseHref);
-          result += `url("${this.escapeCssUrl(nextUrl)}")`;
-        }
-        lastIndex = match.index + match[0].length;
-      }
-
-      return result + text.slice(lastIndex);
-    },
-
-async resourceAsDataUrl(value, baseHref, cache) {
-      const absolute = this.absoluteUrl(value, baseHref);
-      if (!absolute || this.isNonPortableUrl(absolute)) {
-        return absolute && absolute.startsWith("data:") ? absolute : null;
-      }
-
-      if (cache.has(absolute)) {
-        return cache.get(absolute);
-      }
-
-      try {
-        const response = await fetch(absolute, {
-          credentials: "include",
-          cache: "force-cache"
-        });
-        if (!response.ok) {
-          cache.set(absolute, null);
-          return null;
-        }
-        const dataUrl = await this.blobToDataUrl(await response.blob());
-        cache.set(absolute, dataUrl);
-        return dataUrl;
-      } catch (_error) {
-        cache.set(absolute, null);
-        return null;
-      }
-    },
-
-blobToDataUrl(blob) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(reader.error || new Error("Failed to bundle resource."));
-        reader.readAsDataURL(blob);
-      });
-    },
-
-normalizeExportUrls(clone) {
-      const base = clone.querySelector("base[href]");
-      if (base) {
-        base.setAttribute("href", this.absoluteUrl(base.getAttribute("href"), document.baseURI));
-      }
-
-      const urlAttributes = [
-        ["a", "href"],
-        ["area", "href"],
-        ["link", "href"],
-        ["script", "src"],
-        ["img", "src"],
-        ["image", "href"],
-        ["source", "src"],
-        ["video", "src"],
-        ["audio", "src"],
-        ["track", "src"],
-        ["iframe", "src"],
-        ["embed", "src"],
-        ["object", "data"],
-        ["form", "action"]
-      ];
-
-      for (const [selector, attr] of urlAttributes) {
-        for (const element of clone.querySelectorAll(`${selector}[${attr}]`)) {
-          element.setAttribute(attr, this.absoluteUrl(element.getAttribute(attr), document.baseURI));
-        }
-      }
-
-      for (const element of clone.querySelectorAll("image")) {
-        const href = element.getAttribute("xlink:href");
-        if (href) {
-          element.setAttribute("xlink:href", this.absoluteUrl(href, document.baseURI));
-        }
-      }
-
-      for (const element of clone.querySelectorAll("[srcset]")) {
-        element.setAttribute("srcset", this.absoluteSrcset(element.getAttribute("srcset"), document.baseURI));
-      }
-
-      for (const element of clone.querySelectorAll("[style]")) {
-        element.setAttribute("style", this.rewriteCssUrls(element.getAttribute("style"), document.baseURI));
-      }
-
-      for (const style of clone.querySelectorAll("style")) {
-        style.textContent = this.rewriteCssUrls(style.textContent || "", document.baseURI);
-      }
-    },
-
-absoluteSrcset(value, baseHref) {
-      return String(value || "").split(",").map((candidate) => {
-        const parts = candidate.trim().split(/\s+/);
-        if (!parts[0]) {
-          return "";
-        }
-        return [this.absoluteUrl(parts[0], baseHref), ...parts.slice(1)].join(" ");
-      }).filter(Boolean).join(", ");
-    },
-
-rewriteCssUrls(cssText, baseHref) {
-      return String(cssText || "").replace(/url\(\s*(['"]?)(.*?)\1\s*\)/gi, (_match, _quote, rawUrl) => {
-        const url = String(rawUrl || "").trim();
-        if (!url || this.isNonPortableUrl(url)) {
-          return `url(${rawUrl})`;
-        }
-        return `url("${this.escapeCssUrl(this.absoluteUrl(url, baseHref))}")`;
-      });
-    },
-
-absoluteUrl(value, baseHref) {
-      const url = String(value || "").trim();
-      if (!url || this.isNonPortableUrl(url)) {
-        return url;
-      }
-      try {
-        return new URL(url, baseHref || document.baseURI).href;
-      } catch (_error) {
-        return url;
-      }
-    },
-
-isNonPortableUrl(value) {
-      return /^(?:#|data:|blob:|javascript:|mailto:|tel:|sms:|about:|chrome:|chrome-extension:)/i.test(String(value || "").trim());
-    },
-
-escapeCssUrl(value) {
-      return String(value || "").replace(/["\\\n\r\f]/g, (char) => `\\${char}`);
     },
 
 fallbackDownload(html, filename) {
@@ -5346,7 +4987,7 @@ escapeDraftCss(value) {
 
     await chrome.storage.local.set({
       htmlSlideMenderLanguage: options.lang === "en" ? "en" : "zh-CN",
-      htmlSlideMenderExportMode: options.exportMode === "full" ? "full" : "basic"
+      htmlSlideMenderExportMode: "basic"
     });
 
     const response = await chrome.runtime.sendMessage({
@@ -5355,8 +4996,8 @@ escapeDraftCss(value) {
       command: "start",
       payload: {
         language: options.lang,
-        exportMode: options.exportMode,
-        mode: options.exportMode
+        exportMode: "basic",
+        mode: "basic"
       }
     });
 

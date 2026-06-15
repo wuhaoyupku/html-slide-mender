@@ -143,6 +143,23 @@
       color: rgba(255, 255, 255, 0.88);
     }
 
+    .hero-art {
+      justify-self: end;
+      width: min(34vw, 360px);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .hero-art img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 14 / 9;
+      object-fit: cover;
+      border: 1px solid rgba(255, 255, 255, 0.34);
+      background: rgba(255, 255, 255, 0.12);
+    }
+
     .page-title {
       display: flex;
       flex-direction: column;
@@ -438,6 +455,11 @@
         grid-template-columns: 1fr;
       }
 
+      .hero-art {
+        justify-self: start;
+        width: min(100%, 340px);
+      }
+
       .page-title h2 {
         font-size: 48px;
       }
@@ -492,7 +514,10 @@
 
         <div class="hero-copy">
           <p class="lead">一个面向软件开发的 AI coding agent：读代码库、改代码、跑验证、做审查，把想法推进到可检查的结果。</p>
-          <div class="meta">Write · Understand · Review · Debug</div>
+          <figure class="hero-art">
+            <img alt="Codex workflow abstract preview" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 560 360'%3E%3Crect width='560' height='360' fill='%23f7f7f4'/%3E%3Cg fill='none' stroke='%23002fa7' stroke-width='12'%3E%3Cpath d='M84 96h160v92H84z'/%3E%3Cpath d='M316 172h160v92H316z'/%3E%3Cpath d='M244 142h72'/%3E%3Cpath d='M280 106v140'/%3E%3C/g%3E%3Cg fill='%230a0a0a'%3E%3Ccircle cx='132' cy='142' r='13'/%3E%3Ccircle cx='180' cy='142' r='13'/%3E%3Ccircle cx='364' cy='218' r='13'/%3E%3Ccircle cx='412' cy='218' r='13'/%3E%3C/g%3E%3Cpath d='M92 292h376' stroke='%230a0a0a' stroke-width='8'/%3E%3Ctext x='84' y='60' font-family='Arial, sans-serif' font-size='30' font-weight='700' fill='%230a0a0a'%3ECodex workflow%3C/text%3E%3C/svg%3E">
+            <figcaption class="meta">Write · Understand · Review · Debug</figcaption>
+          </figure>
         </div>
       </div>
     </section>

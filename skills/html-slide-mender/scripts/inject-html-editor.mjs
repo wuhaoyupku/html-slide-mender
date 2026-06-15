@@ -33,9 +33,9 @@ async function main() {
   const sourceHtml = await readFile(inputPath, "utf8");
   const runtime = await readFile(runtimePath, "utf8");
   const cleanedHtml = stripPreviousInjection(sourceHtml);
-  const cspResult = args.preserveCsp
-    ? { html: cleanedHtml, removed: 0 }
-    : removeMetaCsp(cleanedHtml);
+  const cspResult = args.stripCsp
+    ? removeMetaCsp(cleanedHtml)
+    : { html: cleanedHtml, removed: 0 };
   const options = {
     lang: args.lang || "zh-CN",
     exportMode: args.mode || "basic",
@@ -57,6 +57,7 @@ async function main() {
     exportMode: args.mode || "basic",
     autoStart: args.autoStart,
     cspMetaRemoved: cspResult.removed,
+    cspMetaPreserved: !args.stripCsp,
     note: "Open the output HTML in a browser, edit visually, then use the editor toolbar to download a clean HTML copy."
   }, null, 2));
 }
@@ -68,7 +69,7 @@ function parseArgs(argv) {
     lang: "zh-CN",
     mode: "basic",
     autoStart: true,
-    preserveCsp: false,
+    stripCsp: false,
     help: false
   };
 
@@ -87,8 +88,10 @@ function parseArgs(argv) {
       index += 1;
     } else if (arg === "--no-autostart") {
       args.autoStart = false;
+    } else if (arg === "--strip-csp") {
+      args.stripCsp = true;
     } else if (arg === "--preserve-csp") {
-      args.preserveCsp = true;
+      args.stripCsp = false;
     } else if (arg.startsWith("--")) {
       throw new Error(`Unknown option: ${arg}`);
     } else if (!args.input) {
@@ -114,7 +117,10 @@ function normalizeLanguage(value) {
 }
 
 function normalizeMode(value) {
-  return value === "full" ? "full" : "basic";
+  if (!value || value === "basic") {
+    return "basic";
+  }
+  throw new Error(`Unsupported export mode for the skill runtime: ${value}. Use basic.`);
 }
 
 function defaultOutputPath(inputPath) {
@@ -171,13 +177,14 @@ function injectBeforeBodyEnd(html, injection) {
 
 function printUsage() {
   console.log(`Usage:
-  node scripts/inject-html-editor.mjs <input.html> [--out output.html] [--lang zh-CN|en] [--mode basic|full]
+  node scripts/inject-html-editor.mjs <input.html> [--out output.html] [--lang zh-CN|en] [--mode basic]
 
 Options:
   --out <path>       Output editable HTML path. Defaults to <input>.editable.html in the same folder.
   --lang <value>     Editor language: zh-CN or en. Defaults to zh-CN.
-  --mode <value>     Default export mode: basic or full. Defaults to basic.
+  --mode <value>     Export mode. Only basic is supported by the skill runtime.
   --no-autostart     Inject the runtime but do not start editing automatically.
-  --preserve-csp     Keep existing meta Content-Security-Policy tags. Default removes them in the editable copy.
+  --strip-csp        Remove meta Content-Security-Policy tags if they block the editor.
+  --preserve-csp     Legacy no-op; CSP meta tags are preserved by default.
 `);
 }

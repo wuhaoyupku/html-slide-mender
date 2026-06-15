@@ -48,6 +48,11 @@ if (/<script(?![^>]+src=)/i.test(popupHtml)) {
   errors.push("Popup HTML should not contain inline scripts.");
 }
 
+const exporterJs = await readFile(new URL("src/content/modules/exporter.js", root), "utf8");
+if (/credentials\s*:\s*["']include["']/.test(exporterJs)) {
+  errors.push("Full HTML export must not fetch external resources with browser credentials.");
+}
+
 if (errors.length) {
   console.error(errors.map((error) => `- ${error}`).join("\n"));
   process.exit(1);
