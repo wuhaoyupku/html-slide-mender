@@ -24,6 +24,7 @@ You can test with `fixtures/sample-deck.html` after enabling file URL access.
 - Current viewport text and image detection.
 - Text editing, font size, color, bold, alignment, and line height controls.
 - Image replacement, fit mode, zoom, drag, and reset.
+- Layout micro-adjustment mode for lightly moving visible text, image, card, and block elements.
 - Basic HTML export for generated slide files, plus full single-file export for
   webpage edits when CSS and image resources should be bundled.
 
