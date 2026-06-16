@@ -63,11 +63,12 @@ async download(options = {}) {
         this.fallbackDownload(html, filename);
       }
 
-      this.toast(`${this.t("htmlReady")} ${stats.text} ${this.t("textUnit")} · ${stats.images} ${this.t("imageUnit")}`);
+      const layoutSummary = stats.layout ? ` · ${stats.layout} ${this.t("layoutUnit")}` : "";
+      this.toast(`${this.t("htmlReady")} ${stats.text} ${this.t("textUnit")} · ${stats.images} ${this.t("imageUnit")}${layoutSummary}`);
       return {
         ok: true,
         message: this.t("downloadStarted"),
-        summary: `${stats.text} ${this.t("textUnit")} · ${stats.images} ${this.t("imageUnit")}`
+        summary: `${stats.text} ${this.t("textUnit")} · ${stats.images} ${this.t("imageUnit")}${layoutSummary}`
       };
     },
 
@@ -142,6 +143,13 @@ createSourceExportPatches(sourceDocument) {
         }
       }
 
+      for (const element of this.exportLayoutElements()) {
+        const patch = this.createSourceExportPatch(element, "layout", sourceDocument);
+        if (patch) {
+          patches.push(patch);
+        }
+      }
+
       return patches;
     },
 
@@ -174,6 +182,14 @@ createSourceExportPatch(element, kind, sourceDocument) {
         const modified = this.isExportElementModified(element, "background");
         const style = element.getAttribute("style") || "";
         if (!modified || style === (sourceElement.getAttribute("style") || "")) {
+          return null;
+        }
+        return { selector, kind, style };
+      }
+
+      if (kind === "layout") {
+        const style = element.getAttribute("style") || "";
+        if (style === (sourceElement.getAttribute("style") || "")) {
           return null;
         }
         return { selector, kind, style };
@@ -229,6 +245,11 @@ applySourceExportPatch(sourceDocument, patch) {
       }
 
       if (patch.kind === "background") {
+        restoreAttr(element, "style", patch.style);
+        return;
+      }
+
+      if (patch.kind === "layout") {
         restoreAttr(element, "style", patch.style);
         return;
       }
@@ -294,6 +315,11 @@ exportBackgroundElements() {
           const computed = getComputedStyle(element).backgroundImage || "";
           return /background-image\s*:/i.test(inline) || /url\(/i.test(computed) || element.hasAttribute("data-image-slot");
         });
+    },
+
+exportLayoutElements() {
+      return (this.layoutElementsForExport?.() || [])
+        .filter((element) => this.isExportPageElement(element));
     },
 
 isExportPageElement(element) {

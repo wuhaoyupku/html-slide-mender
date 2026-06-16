@@ -110,6 +110,37 @@
       text-overflow: ellipsis;
     }
 
+    .mode-switch {
+      display: inline-flex;
+      align-items: center;
+      min-width: max-content;
+      padding: 3px;
+      border: 1px solid #cfd8e6;
+      border-radius: 8px;
+      background: #f8fafc;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+    }
+
+    .mode-switch button {
+      min-height: 30px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #475569;
+      padding: 0 10px;
+    }
+
+    .mode-switch button:hover {
+      background: #eef4ff;
+      color: #1553c7;
+    }
+
+    .mode-switch button.is-active {
+      background: #1f6fff;
+      color: #ffffff;
+      box-shadow: 0 3px 10px rgba(31, 111, 255, 0.22);
+    }
+
     .group {
       align-items: center;
       gap: 6px;
@@ -150,6 +181,10 @@
     }
 
     .edit-popover[data-selection="image"] .group-image {
+      display: flex;
+    }
+
+    .edit-popover[data-selection="layout"] .group-layout {
       display: flex;
     }
 
@@ -568,6 +603,23 @@
       box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.16);
     }
 
+    .box-layout {
+      border-color: #7c3aed;
+      background: rgba(124, 58, 237, 0.045);
+      cursor: grab;
+    }
+
+    .box-layout:hover,
+    .box-layout.is-selected {
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.16);
+    }
+
+    .box-layout.is-layout-dragging {
+      cursor: grabbing;
+      border-style: solid;
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.24);
+    }
+
     .box.is-editing {
       pointer-events: none;
       border-style: solid;
@@ -602,6 +654,10 @@
 
     .box-image.is-positioned .box-label {
       background: #b45309;
+    }
+
+    .box-layout .box-label {
+      background: #5b21b6;
     }
 
     .box.has-overflow .box-label {

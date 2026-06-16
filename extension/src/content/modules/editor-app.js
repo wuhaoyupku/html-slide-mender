@@ -24,6 +24,7 @@
       this.savedTextRange = null;
       this.lang = DEFAULT_LANG;
       this.exportMode = "basic";
+      this.editMode = "content";
       this.colorHistory = [];
       this.colorPickers = new Map();
       this.openCombo = null;
@@ -32,12 +33,15 @@
       this.colorMenuPicker = null;
       this.isSyncingColorControls = false;
       this.imageAdjustments = new Map();
+      this.layoutAdjustments = new Map();
       this.pendingImageReplaceId = null;
       this.originalStates = new Map();
       this.modified = new Map();
       this.undoStack = [];
       this.redoStack = [];
       this.drag = null;
+      this.layoutDrag = null;
+      this.suppressLayoutClickUntil = 0;
       this.scanTimer = 0;
       this.startupScanTimers = [];
       this.removers = [];
@@ -52,6 +56,7 @@
     ns.mixins.scanner,
     ns.mixins.text,
     ns.mixins.image,
+    ns.mixins.layout,
     ns.mixins.history,
     ns.mixins.exporter,
     ns.mixins.draft

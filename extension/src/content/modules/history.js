@@ -59,6 +59,13 @@ ensureOriginalState(item) {
 
 captureState(item) {
       const element = item.element;
+      if (item.type === "layout") {
+        return {
+          kind: "layout",
+          style: element.getAttribute("style") || ""
+        };
+      }
+
       if (item.type === "text") {
         return {
           kind: "text",
@@ -86,15 +93,23 @@ captureState(item) {
 
 restoreState(item, state) {
       const element = item.element;
+      if (state.kind === "layout") {
+        restoreAttr(element, "style", state.style);
+        this.layoutAdjustments?.delete(item.id);
+        return;
+      }
+
       if (state.kind === "text") {
         element.innerHTML = state.html;
         restoreAttr(element, "style", state.style);
+        this.layoutAdjustments?.delete(item.id);
         return;
       }
 
       if (state.kind === "background") {
         restoreAttr(element, "style", state.style);
         this.imageAdjustments?.delete(item.id);
+        this.layoutAdjustments?.delete(item.id);
         return;
       }
 
@@ -106,6 +121,7 @@ restoreState(item, state) {
         restoreAttr(element.parentElement, "style", state.parentStyle);
       }
       this.imageAdjustments?.delete(item.id);
+      this.layoutAdjustments?.delete(item.id);
     },
 
 pushHistory(item, before, after, label) {
@@ -115,6 +131,7 @@ pushHistory(item, before, after, label) {
         imageMode: item.imageMode,
         element: item.element,
         frameElement: item.frameElement,
+        layoutElement: this.layoutTargetForItem?.(item),
         before,
         after,
         label
@@ -163,7 +180,8 @@ itemFromHistory(entry) {
         type: entry.type,
         imageMode: entry.imageMode,
         element: entry.element,
-        frameElement: entry.frameElement
+        frameElement: entry.frameElement,
+        layoutElement: entry.layoutElement
       };
     },
 
@@ -173,9 +191,12 @@ itemFromHistoryId(id) {
     },
 
 markModified(item) {
+      const existing = this.modified.get(item.id) || {};
       this.modified.set(item.id, {
         type: item.type,
-        imageMode: item.imageMode
+        imageMode: item.imageMode,
+        content: true,
+        layout: existing.layout || false
       });
       this.updateModifiedFromCurrent(item);
     },
@@ -189,9 +210,13 @@ updateModifiedFromCurrent(item) {
       if (sameState(original, current)) {
         this.modified.delete(item.id);
       } else {
+        const existing = this.modified.get(item.id) || {};
+        const layout = this.isLayoutCurrentlyAdjusted?.(item) || false;
         this.modified.set(item.id, {
           type: item.type,
-          imageMode: item.imageMode
+          imageMode: item.imageMode,
+          content: existing.content !== undefined ? existing.content : true,
+          layout
         });
       }
       this.refreshToolbar();
@@ -200,14 +225,21 @@ updateModifiedFromCurrent(item) {
 modifiedStats() {
       let text = 0;
       let images = 0;
+      let layout = 0;
       for (const item of this.modified.values()) {
+        if (item.layout) {
+          layout += 1;
+        }
+        if (item.content === false) {
+          continue;
+        }
         if (item.type === "text") {
           text += 1;
-        } else {
+        } else if (item.type === "image") {
           images += 1;
         }
       }
-      return { text, images, total: text + images };
+      return { text, images, layout, total: text + images + layout };
     }
   };
 })();

@@ -106,6 +106,7 @@ async toggleBoxes() {
 
       this.showBoxes = !this.showBoxes;
       this.renderBoxes();
+      this.refreshToolbar();
       return {
         ok: true,
         message: this.showBoxes ? this.t("boxesVisible") : this.t("boxesHidden"),
@@ -220,6 +221,12 @@ async handleAction(action) {
         case "toggle-boxes":
           await this.toggleBoxes();
           return;
+        case "content-mode":
+          this.setEditorMode?.("content");
+          return;
+        case "layout-mode":
+          this.setEditorMode?.("layout");
+          return;
         case "undo":
           this.undo();
           return;
@@ -279,6 +286,9 @@ async handleAction(action) {
           return;
         case "image-reset":
           this.resetSelectedImage();
+          return;
+        case "layout-reset":
+          this.resetSelectedLayout?.();
           return;
         default:
           return;
@@ -355,8 +365,9 @@ scan() {
       const next = new Map();
       const textItems = this.findTextItems();
       const imageItems = this.findImageItems();
+      const layoutItems = this.findLayoutItems?.(textItems, imageItems) || [];
 
-      for (const item of [...textItems, ...imageItems]) {
+      for (const item of [...textItems, ...imageItems, ...layoutItems]) {
         next.set(item.id, item);
       }
 
@@ -401,7 +412,8 @@ summaryText() {
       const images = Array.from(this.items.values()).filter((item) => item.type === "image").length;
       const stats = this.modifiedStats();
       const changed = stats.total ? ` · ${stats.total} ${this.t("changed")}` : "";
-      return `${text} ${this.t("textUnit")} · ${images} ${this.t("imageUnit")}${changed}`;
+      const layout = stats.layout ? ` · ${stats.layout} ${this.t("layoutUnit")}` : "";
+      return `${text} ${this.t("textUnit")} · ${images} ${this.t("imageUnit")}${layout}${changed}`;
     },
 
     handleDocumentKeydown(event) {
@@ -421,6 +433,12 @@ summaryText() {
         } else {
           this.undo();
         }
+        return;
+      }
+
+      if (this.handleLayoutKeydown?.(event)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
         return;
       }
 

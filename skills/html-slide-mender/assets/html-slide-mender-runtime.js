@@ -250,6 +250,10 @@
       redo: "重做",
       rescan: "重新识别",
       boxes: "编辑框",
+      boxesOn: "编辑框 开",
+      boxesOff: "编辑框 关",
+      contentMode: "文字/图片",
+      layoutMode: "位置微调",
       saveDraft: "保存草稿",
       download: "下载 HTML",
       exit: "退出",
@@ -276,11 +280,14 @@
       language: "English",
       textLabel: "文字",
       imageLabel: "图片",
+      layoutLabel: "位置",
       positioned: "定位元素",
       overflow: "溢出",
       changed: "处修改",
       textUnit: "文字",
       imageUnit: "图片",
+      layoutUnit: "版面",
+      resetLayout: "恢复位置",
       started: "编辑器已启动。",
       alreadyActive: "编辑器已在运行。",
       exited: "已退出编辑模式。",
@@ -295,6 +302,9 @@
       unsupportedImage: "暂不支持这种图片格式。",
       imageReplaced: "图片已替换。",
       imageReset: "图片已重置。",
+      layoutModeOn: "已进入版面微调模式。",
+      layoutModeOff: "已退出版面微调模式。",
+      layoutReset: "位置已恢复。",
       htmlReady: "HTML 已准备好。",
       downloadStarted: "HTML 下载已开始。",
       draftSaved: "草稿已保存，刷新后会自动恢复。",
@@ -310,6 +320,10 @@
       redo: "Redo",
       rescan: "Rescan",
       boxes: "Boxes",
+      boxesOn: "Boxes on",
+      boxesOff: "Boxes off",
+      contentMode: "Text/Image",
+      layoutMode: "Move layout",
       saveDraft: "Save draft",
       download: "Download HTML",
       exit: "Exit",
@@ -336,11 +350,14 @@
       language: "中文",
       textLabel: "Text",
       imageLabel: "Image",
+      layoutLabel: "Move",
       positioned: "positioned",
       overflow: "overflow",
       changed: "changed",
       textUnit: "text",
       imageUnit: "images",
+      layoutUnit: "layout",
+      resetLayout: "Reset position",
       started: "Editor started.",
       alreadyActive: "Editor already active.",
       exited: "Editor exited.",
@@ -355,6 +372,9 @@
       unsupportedImage: "Unsupported image type.",
       imageReplaced: "Image replaced.",
       imageReset: "Image reset.",
+      layoutModeOn: "Layout adjustment mode on.",
+      layoutModeOff: "Layout adjustment mode off.",
+      layoutReset: "Position reset.",
       htmlReady: "HTML ready.",
       downloadStarted: "HTML download started.",
       draftSaved: "Draft saved. It will restore after refresh.",
@@ -679,6 +699,37 @@
       text-overflow: ellipsis;
     }
 
+    .mode-switch {
+      display: inline-flex;
+      align-items: center;
+      min-width: max-content;
+      padding: 3px;
+      border: 1px solid #cfd8e6;
+      border-radius: 8px;
+      background: #f8fafc;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+    }
+
+    .mode-switch button {
+      min-height: 30px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #475569;
+      padding: 0 10px;
+    }
+
+    .mode-switch button:hover {
+      background: #eef4ff;
+      color: #1553c7;
+    }
+
+    .mode-switch button.is-active {
+      background: #1f6fff;
+      color: #ffffff;
+      box-shadow: 0 3px 10px rgba(31, 111, 255, 0.22);
+    }
+
     .group {
       align-items: center;
       gap: 6px;
@@ -719,6 +770,10 @@
     }
 
     .edit-popover[data-selection="image"] .group-image {
+      display: flex;
+    }
+
+    .edit-popover[data-selection="layout"] .group-layout {
       display: flex;
     }
 
@@ -1137,6 +1192,23 @@
       box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.16);
     }
 
+    .box-layout {
+      border-color: #7c3aed;
+      background: rgba(124, 58, 237, 0.045);
+      cursor: grab;
+    }
+
+    .box-layout:hover,
+    .box-layout.is-selected {
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.16);
+    }
+
+    .box-layout.is-layout-dragging {
+      cursor: grabbing;
+      border-style: solid;
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.24);
+    }
+
     .box.is-editing {
       pointer-events: none;
       border-style: solid;
@@ -1171,6 +1243,10 @@
 
     .box-image.is-positioned .box-label {
       background: #b45309;
+    }
+
+    .box-layout .box-label {
+      background: #5b21b6;
     }
 
     .box.has-overflow .box-label {
@@ -1316,6 +1392,7 @@ async toggleBoxes() {
 
       this.showBoxes = !this.showBoxes;
       this.renderBoxes();
+      this.refreshToolbar();
       return {
         ok: true,
         message: this.showBoxes ? this.t("boxesVisible") : this.t("boxesHidden"),
@@ -1430,6 +1507,12 @@ async handleAction(action) {
         case "toggle-boxes":
           await this.toggleBoxes();
           return;
+        case "content-mode":
+          this.setEditorMode?.("content");
+          return;
+        case "layout-mode":
+          this.setEditorMode?.("layout");
+          return;
         case "undo":
           this.undo();
           return;
@@ -1489,6 +1572,9 @@ async handleAction(action) {
           return;
         case "image-reset":
           this.resetSelectedImage();
+          return;
+        case "layout-reset":
+          this.resetSelectedLayout?.();
           return;
         default:
           return;
@@ -1565,8 +1651,9 @@ scan() {
       const next = new Map();
       const textItems = this.findTextItems();
       const imageItems = this.findImageItems();
+      const layoutItems = this.findLayoutItems?.(textItems, imageItems) || [];
 
-      for (const item of [...textItems, ...imageItems]) {
+      for (const item of [...textItems, ...imageItems, ...layoutItems]) {
         next.set(item.id, item);
       }
 
@@ -1611,7 +1698,8 @@ summaryText() {
       const images = Array.from(this.items.values()).filter((item) => item.type === "image").length;
       const stats = this.modifiedStats();
       const changed = stats.total ? ` · ${stats.total} ${this.t("changed")}` : "";
-      return `${text} ${this.t("textUnit")} · ${images} ${this.t("imageUnit")}${changed}`;
+      const layout = stats.layout ? ` · ${stats.layout} ${this.t("layoutUnit")}` : "";
+      return `${text} ${this.t("textUnit")} · ${images} ${this.t("imageUnit")}${layout}${changed}`;
     },
 
     handleDocumentKeydown(event) {
@@ -1631,6 +1719,12 @@ summaryText() {
         } else {
           this.undo();
         }
+        return;
+      }
+
+      if (this.handleLayoutKeydown?.(event)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
         return;
       }
 
@@ -2356,6 +2450,12 @@ bindUiEvents() {
         }
         this.closeOpenMenus();
         this.selectItem(item.id);
+        if (this.isLayoutMode?.()) {
+          if (performance.now() < (this.suppressLayoutClickUntil || 0)) {
+            return;
+          }
+          return;
+        }
         if (item.type === "text") {
           this.enterTextEdit(item, event);
         }
@@ -2367,6 +2467,13 @@ bindUiEvents() {
           return;
         }
         const item = this.items.get(box.dataset.itemId);
+        if (this.isLayoutMode?.()) {
+          if (!item) {
+            return;
+          }
+          this.startLayoutDrag?.(event, item);
+          return;
+        }
         if (!item || item.type !== "image") {
           return;
         }
@@ -2419,7 +2526,7 @@ renderBoxes() {
         return;
       }
 
-      const boxes = [];
+      const entries = [];
       for (const item of this.items.values()) {
         const rect = this.itemBoxElement(item).getBoundingClientRect();
         if (!intersectsViewport(rect)) {
@@ -2428,18 +2535,29 @@ renderBoxes() {
         const selected = item.id === this.selectedId;
         const editing = item.id === this.editingTextId;
         const overflow = item.type === "text" && hasTextOverflow(item.element);
-        boxes.push(this.boxTemplate(item, rect, selected, editing, overflow));
+        entries.push({ item, rect, selected, editing, overflow });
       }
 
+      if (this.isLayoutMode?.()) {
+        entries.sort((a, b) => (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height));
+      }
+
+      const boxes = entries.map(({ item, rect, selected, editing, overflow }) => (
+        this.boxTemplate(item, rect, selected, editing, overflow)
+      ));
       this.layer.innerHTML = boxes.join("");
     },
 
 boxTemplate(item, rect, selected, editing, overflow) {
-      const typeLabel = item.type === "text" ? this.t("textLabel") : this.t("imageLabel");
+      const layoutMode = this.isLayoutMode?.() || item.type === "layout";
+      const typeLabel = layoutMode
+        ? this.t("layoutLabel")
+        : (item.type === "text" ? this.t("textLabel") : this.t("imageLabel"));
       const positionLabel = item.positioned ? ` · ${this.t("positioned")}` : "";
+      const offsetLabel = layoutMode ? this.layoutOffsetLabel?.(item) || "" : "";
       const className = [
         "box",
-        item.type === "text" ? "box-text" : "box-image",
+        layoutMode ? "box-layout" : (item.type === "text" ? "box-text" : "box-image"),
         item.positioned ? "is-positioned" : "",
         selected ? "is-selected" : "",
         editing ? "is-editing" : "",
@@ -2450,12 +2568,15 @@ boxTemplate(item, rect, selected, editing, overflow) {
         <div class="${className}"
           data-item-id="${escapeAttr(item.id)}"
           style="left:${round(rect.left)}px;top:${round(rect.top)}px;width:${round(rect.width)}px;height:${round(rect.height)}px">
-          <span class="box-label">${typeLabel}${positionLabel}${overflow ? ` ${this.t("overflow")}` : ""}</span>
+          <span class="box-label">${typeLabel}${positionLabel}${offsetLabel}${overflow ? ` ${this.t("overflow")}` : ""}</span>
         </div>
       `;
     },
 
 itemBoxElement(item) {
+      if (this.isLayoutMode?.()) {
+        return this.layoutTargetForItem?.(item) || item?.frameElement || item?.element;
+      }
       return item?.frameElement || item?.element;
     },
 
@@ -2467,6 +2588,8 @@ refreshToolbar() {
       const item = this.selectedItem();
       this.shadow.querySelector("[data-role='summary']").textContent = this.summaryText();
       this.refreshExportModeControl();
+      this.refreshModeButtons?.();
+      this.refreshBoxesButton();
 
       if (item?.type === "text") {
         const style = this.toolbarTextStyle(item);
@@ -2494,6 +2617,16 @@ refreshToolbar() {
 
       this.positionEditPopover(item);
       this.repositionOpenFloatingControls();
+    },
+
+refreshBoxesButton() {
+      const button = this.shadow?.querySelector("[data-action='toggle-boxes']");
+      if (!button) {
+        return;
+      }
+      button.textContent = this.showBoxes ? this.t("boxesOn") : this.t("boxesOff");
+      button.classList.toggle("is-active", this.showBoxes);
+      button.setAttribute("aria-pressed", this.showBoxes ? "true" : "false");
     },
 
 handleComboOption(option) {
@@ -2670,10 +2803,10 @@ refreshExportModeControl() {
         return;
       }
 
-      const selectionType = item?.type || "none";
+      const selectionType = item && this.isLayoutMode?.() ? "layout" : (item?.type || "none");
       this.editPopover.dataset.selection = selectionType;
 
-      if (!item || !["text", "image"].includes(selectionType)) {
+      if (!item || !["text", "image", "layout"].includes(selectionType)) {
         this.editPopover.hidden = true;
         delete this.editPopover.dataset.itemId;
         return;
@@ -2798,11 +2931,16 @@ template() {
           <div class="toolbar-body">
             <div class="summary" data-role="summary">${escapeHtml(this.t("ready"))}</div>
 
+            <div class="mode-switch" role="group" aria-label="${escapeAttr(this.t("layoutMode"))}">
+              <button type="button" data-action="content-mode">${escapeHtml(this.t("contentMode"))}</button>
+              <button type="button" data-action="layout-mode">${escapeHtml(this.t("layoutMode"))}</button>
+            </div>
+
             <div class="group group-default">
               <button type="button" data-action="undo">${escapeHtml(this.t("undo"))}</button>
               <button type="button" data-action="redo">${escapeHtml(this.t("redo"))}</button>
               <button type="button" data-action="rescan">${escapeHtml(this.t("rescan"))}</button>
-              <button type="button" data-action="toggle-boxes">${escapeHtml(this.t("boxes"))}</button>
+              <button type="button" data-action="toggle-boxes" aria-pressed="${this.showBoxes ? "true" : "false"}">${escapeHtml(this.showBoxes ? this.t("boxesOn") : this.t("boxesOff"))}</button>
               <button type="button" data-action="language">${escapeHtml(this.t("language"))}</button>
               ${this.isDraftEnabled?.() ? `<button type="button" data-action="save-draft">${escapeHtml(this.t("saveDraft"))}</button>` : ""}
               <button class="primary" type="button" data-action="download">${escapeHtml(this.t("download"))}</button>
@@ -2853,6 +2991,10 @@ template() {
               <button type="button" data-action="zoom-out">${escapeHtml(this.t("zoomOut"))}</button>
               <button type="button" data-action="zoom-in">${escapeHtml(this.t("zoomIn"))}</button>
               <button type="button" data-action="image-reset">${escapeHtml(this.t("reset"))}</button>
+            </div>
+
+            <div class="group group-layout">
+              <button type="button" data-action="layout-reset">${escapeHtml(this.t("resetLayout"))}</button>
             </div>
         </div>
         <div class="combo-menu font-menu" data-combo-menu="fontFamily" role="listbox" hidden></div>
@@ -4099,6 +4241,536 @@ resetSelectedImage() {
 
 
 
+/* ===== src/content/modules/layout.js ===== */
+(() => {
+  const ns = window.HtmlSlideMenderExtension = window.HtmlSlideMenderExtension || {};
+  ns.mixins = ns.mixins || {};
+  const { ROOT_ID, EXCLUDED_SELECTOR } = ns.constants;
+  const {
+    isRendered,
+    isVisibleRect,
+    intersectsViewport,
+    round,
+    clamp,
+    sameState,
+    restoreAttr
+  } = ns.utils;
+
+  const LAYOUT_CUSTOM_PROPS = {
+    x: "--hsm-layout-x",
+    y: "--hsm-layout-y",
+    baseTransform: "--hsm-layout-base-transform"
+  };
+
+  const LAYOUT_TAG_SELECTOR = [
+    "[data-layout-editable]",
+    "[data-card]",
+    "[data-panel]",
+    "[data-shape]",
+    "figure",
+    "article",
+    "aside",
+    "section",
+    "div"
+  ].join(",");
+
+  function readLayoutNumber(element, name, fallback = 0) {
+    const value = Number.parseFloat(element?.style?.getPropertyValue(name));
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function normalizedTransform(value) {
+    const text = String(value || "").trim();
+    return text && text !== "none" ? text : "";
+  }
+
+  function hasVisiblePaint(style) {
+    const hasBackground = style.backgroundImage !== "none" ||
+      !/^rgba?\(\s*0\s*,\s*0\s*,\s*0\s*(?:,\s*0\s*)?\)$/i.test(style.backgroundColor || "") &&
+      style.backgroundColor !== "transparent";
+    const hasBorder = ["Top", "Right", "Bottom", "Left"].some((side) => {
+      const width = Number.parseFloat(style[`border${side}Width`]);
+      return Number.isFinite(width) && width > 0 && style[`border${side}Style`] !== "none";
+    });
+    const hasShadow = style.boxShadow && style.boxShadow !== "none";
+    return hasBackground || hasBorder || hasShadow;
+  }
+
+  ns.mixins.layout = {
+isLayoutMode() {
+      return this.editMode === "layout";
+    },
+
+toggleLayoutMode() {
+      this.setEditorMode(this.isLayoutMode() ? "content" : "layout");
+    },
+
+setEditorMode(mode) {
+      const nextMode = mode === "layout" ? "layout" : "content";
+      if (this.editMode === nextMode) {
+        return;
+      }
+
+      this.commitActiveText?.();
+      this.editMode = nextMode;
+      this.closeOpenMenus?.();
+      this.scheduleScan(0);
+      this.refreshToolbar?.();
+      this.renderBoxes?.();
+      this.toast?.(this.t(nextMode === "layout" ? "layoutModeOn" : "layoutModeOff"));
+    },
+
+findLayoutItems(textItems = [], imageItems = []) {
+      if (!this.isLayoutMode?.()) {
+        return [];
+      }
+
+      const existing = new Set();
+      for (const item of [...textItems, ...imageItems]) {
+        if (item.element) {
+          existing.add(item.element);
+        }
+      }
+
+      const items = [];
+      for (const element of Array.from(document.body?.querySelectorAll(LAYOUT_TAG_SELECTOR) || [])) {
+        if (existing.has(element) || !this.isLayoutCandidate(element)) {
+          continue;
+        }
+        items.push({
+          id: this.idFor(element, "layout"),
+          type: "layout",
+          element,
+          frameElement: element,
+          positioned: this.isPositionedImage?.(element, element) || false,
+          layoutRisk: this.layoutRiskForElement(element)
+        });
+      }
+      return this.filterNestedLayoutItems(items);
+    },
+
+isLayoutCandidate(element) {
+      if (!this.isPageElement?.(element) || element.matches(EXCLUDED_SELECTOR)) {
+        return false;
+      }
+      if (element.id === ROOT_ID || element.closest?.(`#${ROOT_ID}`)) {
+        return false;
+      }
+      if (element.matches("html,body,script,style,nav,[role='navigation']")) {
+        return false;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const viewportArea = Math.max(1, (window.innerWidth || 0) * (window.innerHeight || 0));
+      if (!isVisibleRect(rect, 28, 28) || !intersectsViewport(rect) || rect.width * rect.height > viewportArea * 0.7) {
+        return false;
+      }
+
+      const style = getComputedStyle(element);
+      if (!isRendered(style)) {
+        return false;
+      }
+
+      return element.hasAttribute("data-layout-editable") ||
+        element.hasAttribute("data-card") ||
+        element.hasAttribute("data-panel") ||
+        element.hasAttribute("data-shape") ||
+        hasVisiblePaint(style);
+    },
+
+layoutRiskForElement(element) {
+      const style = getComputedStyle(element);
+      const parentDisplay = element.parentElement ? getComputedStyle(element.parentElement).display : "";
+      if (style.position === "static" && /^(flex|inline-flex|grid|inline-grid)$/.test(parentDisplay)) {
+        return "cautious";
+      }
+      if (style.position === "static" && !element.hasAttribute("data-layout-editable")) {
+        return "cautious";
+      }
+      return "safe";
+    },
+
+filterNestedLayoutItems(items) {
+      const byElement = new Set(items.map((item) => item.element));
+      return items.filter((item) => {
+        let parent = item.element.parentElement;
+        while (parent && parent !== document.body && parent !== document.documentElement) {
+          if (byElement.has(parent) && parent.getBoundingClientRect().width === item.element.getBoundingClientRect().width) {
+            return false;
+          }
+          parent = parent.parentElement;
+        }
+        return true;
+      });
+    },
+
+layoutTargetForItem(item) {
+      if (!item) {
+        return null;
+      }
+      if (item.layoutElement?.isConnected) {
+        return item.layoutElement;
+      }
+      if (item.type === "image" && item.frameElement && item.frameElement !== document.body && item.frameElement !== document.documentElement) {
+        return item.frameElement;
+      }
+      return item.frameElement || item.element;
+    },
+
+refreshModeButtons() {
+      const active = this.isLayoutMode();
+      const contentButton = this.shadow?.querySelector("[data-action='content-mode']");
+      const layoutButton = this.shadow?.querySelector("[data-action='layout-mode']");
+      contentButton?.classList.toggle("is-active", !active);
+      layoutButton?.classList.toggle("is-active", active);
+      contentButton?.setAttribute("aria-pressed", active ? "false" : "true");
+      layoutButton?.setAttribute("aria-pressed", active ? "true" : "false");
+    },
+
+layoutAdjustmentFor(item) {
+      const target = this.layoutTargetForItem(item);
+      if (!item || !target) {
+        return null;
+      }
+
+      const existing = this.layoutAdjustments.get(item.id);
+      if (existing?.target === target) {
+        return existing;
+      }
+
+      const baseTransform = normalizedTransform(
+        target.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.baseTransform) ||
+        target.style.transform
+      );
+      const adjustment = {
+        target,
+        x: readLayoutNumber(target, LAYOUT_CUSTOM_PROPS.x, 0),
+        y: readLayoutNumber(target, LAYOUT_CUSTOM_PROPS.y, 0),
+        baseTransform,
+        risk: item.layoutRisk || "safe"
+      };
+      this.layoutAdjustments.set(item.id, adjustment);
+      return adjustment;
+    },
+
+composeLayoutTransform(adjustment) {
+      const base = normalizedTransform(adjustment?.baseTransform);
+      const x = Math.round(adjustment?.x || 0);
+      const y = Math.round(adjustment?.y || 0);
+      const movement = x || y ? `translate(${x}px, ${y}px)` : "";
+      return [base, movement].filter(Boolean).join(" ");
+    },
+
+applyLayoutAdjustment(item, adjustment) {
+      const target = adjustment?.target || this.layoutTargetForItem(item);
+      if (!target || !adjustment) {
+        return;
+      }
+
+      adjustment.x = round(clamp(adjustment.x || 0, -4000, 4000));
+      adjustment.y = round(clamp(adjustment.y || 0, -4000, 4000));
+      target.style.setProperty(LAYOUT_CUSTOM_PROPS.x, String(Math.round(adjustment.x)));
+      target.style.setProperty(LAYOUT_CUSTOM_PROPS.y, String(Math.round(adjustment.y)));
+      if (adjustment.baseTransform) {
+        target.style.setProperty(LAYOUT_CUSTOM_PROPS.baseTransform, adjustment.baseTransform);
+      } else {
+        target.style.removeProperty(LAYOUT_CUSTOM_PROPS.baseTransform);
+      }
+      target.style.transform = this.composeLayoutTransform(adjustment);
+      if (!target.style.transform) {
+        target.style.removeProperty("transform");
+      }
+    },
+
+startLayoutDrag(event, item) {
+      if (!item || event.button !== 0) {
+        return;
+      }
+
+      const adjustment = this.layoutAdjustmentFor(item);
+      const target = adjustment?.target;
+      if (!target) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      this.commitActiveText?.();
+      this.selectedId = item.id;
+      this.refreshToolbar?.();
+      this.closeOpenMenus?.();
+
+      const startRect = target.getBoundingClientRect();
+      this.layoutDrag = {
+        item,
+        adjustment,
+        before: null,
+        started: false,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: adjustment.x || 0,
+        originY: adjustment.y || 0,
+        startRect
+      };
+
+      const box = this.shadow?.querySelector(`[data-item-id='${CSS.escape(item.id)}']`);
+      box?.classList.add("is-layout-dragging");
+
+      const onMove = (moveEvent) => this.handleLayoutDragMove(moveEvent);
+      const onUp = () => endDrag(false);
+      const onKey = (keyEvent) => {
+        if (keyEvent.key !== "Escape") {
+          return;
+        }
+        keyEvent.preventDefault();
+        keyEvent.stopImmediatePropagation();
+        endDrag(true);
+      };
+      const endDrag = (cancelled) => {
+        document.removeEventListener("pointermove", onMove, true);
+        document.removeEventListener("pointerup", onUp, true);
+        document.removeEventListener("keydown", onKey, true);
+        box?.classList.remove("is-layout-dragging");
+
+        const drag = this.layoutDrag;
+        this.layoutDrag = null;
+        this.suppressLayoutClickUntil = performance.now() + 160;
+
+        if (!drag) {
+          return;
+        }
+
+        if (cancelled && drag.before) {
+          this.restoreState(drag.item, drag.before);
+          this.layoutAdjustments.delete(drag.item.id);
+          this.renderBoxes?.();
+          this.refreshToolbar?.();
+          return;
+        }
+
+        const after = drag.before ? this.captureState(drag.item) : null;
+        if (drag.before && after && !sameState(drag.before, after)) {
+          this.pushHistory(drag.item, drag.before, after, "Move element");
+          this.markLayoutModified(drag.item);
+          this.renderBoxes?.();
+          this.refreshToolbar?.();
+        }
+      };
+
+      document.addEventListener("pointermove", onMove, true);
+      document.addEventListener("pointerup", onUp, true);
+      document.addEventListener("keydown", onKey, true);
+    },
+
+handleLayoutDragMove(event) {
+      const drag = this.layoutDrag;
+      if (!drag) {
+        return;
+      }
+
+      const deltaX = event.clientX - drag.startX;
+      const deltaY = event.clientY - drag.startY;
+      if (!drag.started && Math.hypot(deltaX, deltaY) < 3) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      if (!drag.started) {
+        this.ensureOriginalState(drag.item);
+        drag.before = this.captureState(drag.item);
+        drag.started = true;
+      }
+
+      const next = this.clampLayoutOffset(drag, drag.originX + deltaX, drag.originY + deltaY);
+      drag.adjustment.x = next.x;
+      drag.adjustment.y = next.y;
+      this.applyLayoutAdjustment(drag.item, drag.adjustment);
+      this.renderBoxes?.();
+    },
+
+clampLayoutOffset(drag, x, y) {
+      const rect = drag.startRect;
+      const deltaX = x - drag.originX;
+      const deltaY = y - drag.originY;
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      const minVisibleX = Math.min(32, Math.max(8, rect.width * 0.18));
+      const minVisibleY = Math.min(32, Math.max(8, rect.height * 0.18));
+      const minDeltaX = minVisibleX - rect.right;
+      const maxDeltaX = viewportWidth - minVisibleX - rect.left;
+      const minDeltaY = minVisibleY - rect.bottom;
+      const maxDeltaY = viewportHeight - minVisibleY - rect.top;
+      return {
+        x: drag.originX + clamp(deltaX, minDeltaX, maxDeltaX),
+        y: drag.originY + clamp(deltaY, minDeltaY, maxDeltaY)
+      };
+    },
+
+handleLayoutKeydown(event) {
+      if (!this.isLayoutMode?.() || this.editingTextId || event.altKey || event.metaKey || event.ctrlKey) {
+        return false;
+      }
+
+      const deltas = {
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0]
+      };
+      const delta = deltas[event.key];
+      if (!delta) {
+        return false;
+      }
+
+      const item = this.selectedItem();
+      if (!item) {
+        return false;
+      }
+
+      const step = event.shiftKey ? 10 : 1;
+      this.moveSelectedLayoutBy(delta[0] * step, delta[1] * step);
+      return true;
+    },
+
+moveSelectedLayoutBy(deltaX, deltaY) {
+      const item = this.selectedItem();
+      if (!item) {
+        return;
+      }
+
+      this.withLayoutMutation(item, () => {
+        const adjustment = this.layoutAdjustmentFor(item);
+        if (!adjustment) {
+          return;
+        }
+        adjustment.x = (adjustment.x || 0) + deltaX;
+        adjustment.y = (adjustment.y || 0) + deltaY;
+        this.applyLayoutAdjustment(item, adjustment);
+      }, "Move element");
+    },
+
+withLayoutMutation(item, mutate, label) {
+      this.ensureOriginalState(item);
+      const before = this.captureState(item);
+      mutate();
+      const after = this.captureState(item);
+      if (!sameState(before, after)) {
+        this.pushHistory(item, before, after, label);
+        this.markLayoutModified(item);
+        this.renderBoxes?.();
+        this.refreshToolbar?.();
+      }
+    },
+
+resetSelectedLayout() {
+      const item = this.selectedItem();
+      if (!item) {
+        return;
+      }
+
+      this.withLayoutMutation(item, () => {
+        this.clearLayoutAdjustment(item);
+      }, "Reset layout");
+      this.clearLayoutModifiedIfClean(item);
+      this.toast?.(this.t("layoutReset"));
+    },
+
+clearLayoutAdjustment(item) {
+      const adjustment = this.layoutAdjustmentFor(item);
+      const target = adjustment?.target;
+      if (!target) {
+        return;
+      }
+      restoreAttr(target, "style", this.styleWithoutLayoutAdjustment(target, adjustment));
+      this.layoutAdjustments.delete(item.id);
+    },
+
+styleWithoutLayoutAdjustment(target, adjustment) {
+      const clone = target.cloneNode(false);
+      clone.setAttribute("style", target.getAttribute("style") || "");
+      clone.style.removeProperty(LAYOUT_CUSTOM_PROPS.x);
+      clone.style.removeProperty(LAYOUT_CUSTOM_PROPS.y);
+      clone.style.removeProperty(LAYOUT_CUSTOM_PROPS.baseTransform);
+      const base = normalizedTransform(adjustment?.baseTransform);
+      if (base) {
+        clone.style.transform = base;
+      } else {
+        clone.style.removeProperty("transform");
+      }
+      return clone.getAttribute("style") || "";
+    },
+
+markLayoutModified(item) {
+      const existing = this.modified.get(item.id) || {};
+      this.modified.set(item.id, {
+        type: item.type,
+        imageMode: item.imageMode,
+        content: existing.content || false,
+        layout: true
+      });
+    },
+
+clearLayoutModifiedIfClean(item) {
+      const existing = this.modified.get(item.id);
+      if (!existing?.layout) {
+        return;
+      }
+      const original = this.originalStates.get(item.id);
+      const current = this.captureState(item);
+      if (original && sameState(original, current)) {
+        this.modified.delete(item.id);
+        return;
+      }
+      this.modified.set(item.id, {
+        ...existing,
+        layout: false
+      });
+    },
+
+layoutOffsetLabel(item) {
+      const adjustment = this.layoutAdjustmentFor(item);
+      const x = Math.round(adjustment?.x || 0);
+      const y = Math.round(adjustment?.y || 0);
+      if (!x && !y) {
+        return "";
+      }
+      return ` · x ${x >= 0 ? "+" : ""}${x} / y ${y >= 0 ? "+" : ""}${y}`;
+    },
+
+isLayoutCurrentlyAdjusted(item) {
+      const target = this.layoutTargetForItem(item);
+      if (!target?.style) {
+        return false;
+      }
+      const x = readLayoutNumber(target, LAYOUT_CUSTOM_PROPS.x, 0);
+      const y = readLayoutNumber(target, LAYOUT_CUSTOM_PROPS.y, 0);
+      return Boolean(x || y || target.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.baseTransform));
+    },
+
+layoutElementsForExport() {
+      const elements = [];
+      const seen = new Set();
+      for (const [id, state] of this.modified.entries()) {
+        if (!state.layout) {
+          continue;
+        }
+        const item = this.items.get(id) || this.itemFromHistoryId(id);
+        const element = this.layoutTargetForItem(item);
+        if (!element || seen.has(element) || element.id === ROOT_ID || element.closest?.(`#${ROOT_ID}`)) {
+          continue;
+        }
+        seen.add(element);
+        elements.push(element);
+      }
+      return elements;
+    }
+  };
+})();
+
+
+
 /* ===== src/content/modules/history.js ===== */
 (() => {
   const ns = window.HtmlSlideMenderExtension = window.HtmlSlideMenderExtension || {};
@@ -4161,6 +4833,13 @@ ensureOriginalState(item) {
 
 captureState(item) {
       const element = item.element;
+      if (item.type === "layout") {
+        return {
+          kind: "layout",
+          style: element.getAttribute("style") || ""
+        };
+      }
+
       if (item.type === "text") {
         return {
           kind: "text",
@@ -4188,15 +4867,23 @@ captureState(item) {
 
 restoreState(item, state) {
       const element = item.element;
+      if (state.kind === "layout") {
+        restoreAttr(element, "style", state.style);
+        this.layoutAdjustments?.delete(item.id);
+        return;
+      }
+
       if (state.kind === "text") {
         element.innerHTML = state.html;
         restoreAttr(element, "style", state.style);
+        this.layoutAdjustments?.delete(item.id);
         return;
       }
 
       if (state.kind === "background") {
         restoreAttr(element, "style", state.style);
         this.imageAdjustments?.delete(item.id);
+        this.layoutAdjustments?.delete(item.id);
         return;
       }
 
@@ -4208,6 +4895,7 @@ restoreState(item, state) {
         restoreAttr(element.parentElement, "style", state.parentStyle);
       }
       this.imageAdjustments?.delete(item.id);
+      this.layoutAdjustments?.delete(item.id);
     },
 
 pushHistory(item, before, after, label) {
@@ -4217,6 +4905,7 @@ pushHistory(item, before, after, label) {
         imageMode: item.imageMode,
         element: item.element,
         frameElement: item.frameElement,
+        layoutElement: this.layoutTargetForItem?.(item),
         before,
         after,
         label
@@ -4265,7 +4954,8 @@ itemFromHistory(entry) {
         type: entry.type,
         imageMode: entry.imageMode,
         element: entry.element,
-        frameElement: entry.frameElement
+        frameElement: entry.frameElement,
+        layoutElement: entry.layoutElement
       };
     },
 
@@ -4275,9 +4965,12 @@ itemFromHistoryId(id) {
     },
 
 markModified(item) {
+      const existing = this.modified.get(item.id) || {};
       this.modified.set(item.id, {
         type: item.type,
-        imageMode: item.imageMode
+        imageMode: item.imageMode,
+        content: true,
+        layout: existing.layout || false
       });
       this.updateModifiedFromCurrent(item);
     },
@@ -4291,9 +4984,13 @@ updateModifiedFromCurrent(item) {
       if (sameState(original, current)) {
         this.modified.delete(item.id);
       } else {
+        const existing = this.modified.get(item.id) || {};
+        const layout = this.isLayoutCurrentlyAdjusted?.(item) || false;
         this.modified.set(item.id, {
           type: item.type,
-          imageMode: item.imageMode
+          imageMode: item.imageMode,
+          content: existing.content !== undefined ? existing.content : true,
+          layout
         });
       }
       this.refreshToolbar();
@@ -4302,14 +4999,21 @@ updateModifiedFromCurrent(item) {
 modifiedStats() {
       let text = 0;
       let images = 0;
+      let layout = 0;
       for (const item of this.modified.values()) {
+        if (item.layout) {
+          layout += 1;
+        }
+        if (item.content === false) {
+          continue;
+        }
         if (item.type === "text") {
           text += 1;
-        } else {
+        } else if (item.type === "image") {
           images += 1;
         }
       }
-      return { text, images, total: text + images };
+      return { text, images, layout, total: text + images + layout };
     }
   };
 })();
@@ -4382,11 +5086,12 @@ async download(options = {}) {
         this.fallbackDownload(html, filename);
       }
 
-      this.toast(`${this.t("htmlReady")} ${stats.text} ${this.t("textUnit")} · ${stats.images} ${this.t("imageUnit")}`);
+      const layoutSummary = stats.layout ? ` · ${stats.layout} ${this.t("layoutUnit")}` : "";
+      this.toast(`${this.t("htmlReady")} ${stats.text} ${this.t("textUnit")} · ${stats.images} ${this.t("imageUnit")}${layoutSummary}`);
       return {
         ok: true,
         message: this.t("downloadStarted"),
-        summary: `${stats.text} ${this.t("textUnit")} · ${stats.images} ${this.t("imageUnit")}`
+        summary: `${stats.text} ${this.t("textUnit")} · ${stats.images} ${this.t("imageUnit")}${layoutSummary}`
       };
     },
 
@@ -4450,6 +5155,13 @@ createSourceExportPatches(sourceDocument) {
         }
       }
 
+      for (const element of this.exportLayoutElements()) {
+        const patch = this.createSourceExportPatch(element, "layout", sourceDocument);
+        if (patch) {
+          patches.push(patch);
+        }
+      }
+
       return patches;
     },
 
@@ -4482,6 +5194,14 @@ createSourceExportPatch(element, kind, sourceDocument) {
         const modified = this.isExportElementModified(element, "background");
         const style = element.getAttribute("style") || "";
         if (!modified || style === (sourceElement.getAttribute("style") || "")) {
+          return null;
+        }
+        return { selector, kind, style };
+      }
+
+      if (kind === "layout") {
+        const style = element.getAttribute("style") || "";
+        if (style === (sourceElement.getAttribute("style") || "")) {
           return null;
         }
         return { selector, kind, style };
@@ -4537,6 +5257,11 @@ applySourceExportPatch(sourceDocument, patch) {
       }
 
       if (patch.kind === "background") {
+        restoreAttr(element, "style", patch.style);
+        return;
+      }
+
+      if (patch.kind === "layout") {
         restoreAttr(element, "style", patch.style);
         return;
       }
@@ -4602,6 +5327,11 @@ exportBackgroundElements() {
           const computed = getComputedStyle(element).backgroundImage || "";
           return /background-image\s*:/i.test(inline) || /url\(/i.test(computed) || element.hasAttribute("data-image-slot");
         });
+    },
+
+exportLayoutElements() {
+      return (this.layoutElementsForExport?.() || [])
+        .filter((element) => this.isExportPageElement(element));
     },
 
 isExportPageElement(element) {
@@ -4853,6 +5583,7 @@ escapeDraftCss(value) {
       this.savedTextRange = null;
       this.lang = DEFAULT_LANG;
       this.exportMode = "basic";
+      this.editMode = "content";
       this.colorHistory = [];
       this.colorPickers = new Map();
       this.openCombo = null;
@@ -4861,12 +5592,15 @@ escapeDraftCss(value) {
       this.colorMenuPicker = null;
       this.isSyncingColorControls = false;
       this.imageAdjustments = new Map();
+      this.layoutAdjustments = new Map();
       this.pendingImageReplaceId = null;
       this.originalStates = new Map();
       this.modified = new Map();
       this.undoStack = [];
       this.redoStack = [];
       this.drag = null;
+      this.layoutDrag = null;
+      this.suppressLayoutClickUntil = 0;
       this.scanTimer = 0;
       this.startupScanTimers = [];
       this.removers = [];
@@ -4881,6 +5615,7 @@ escapeDraftCss(value) {
     ns.mixins.scanner,
     ns.mixins.text,
     ns.mixins.image,
+    ns.mixins.layout,
     ns.mixins.history,
     ns.mixins.exporter,
     ns.mixins.draft

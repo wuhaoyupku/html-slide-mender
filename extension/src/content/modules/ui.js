@@ -272,6 +272,12 @@ bindUiEvents() {
         }
         this.closeOpenMenus();
         this.selectItem(item.id);
+        if (this.isLayoutMode?.()) {
+          if (performance.now() < (this.suppressLayoutClickUntil || 0)) {
+            return;
+          }
+          return;
+        }
         if (item.type === "text") {
           this.enterTextEdit(item, event);
         }
@@ -283,6 +289,13 @@ bindUiEvents() {
           return;
         }
         const item = this.items.get(box.dataset.itemId);
+        if (this.isLayoutMode?.()) {
+          if (!item) {
+            return;
+          }
+          this.startLayoutDrag?.(event, item);
+          return;
+        }
         if (!item || item.type !== "image") {
           return;
         }
@@ -335,7 +348,7 @@ renderBoxes() {
         return;
       }
 
-      const boxes = [];
+      const entries = [];
       for (const item of this.items.values()) {
         const rect = this.itemBoxElement(item).getBoundingClientRect();
         if (!intersectsViewport(rect)) {
@@ -344,18 +357,29 @@ renderBoxes() {
         const selected = item.id === this.selectedId;
         const editing = item.id === this.editingTextId;
         const overflow = item.type === "text" && hasTextOverflow(item.element);
-        boxes.push(this.boxTemplate(item, rect, selected, editing, overflow));
+        entries.push({ item, rect, selected, editing, overflow });
       }
 
+      if (this.isLayoutMode?.()) {
+        entries.sort((a, b) => (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height));
+      }
+
+      const boxes = entries.map(({ item, rect, selected, editing, overflow }) => (
+        this.boxTemplate(item, rect, selected, editing, overflow)
+      ));
       this.layer.innerHTML = boxes.join("");
     },
 
 boxTemplate(item, rect, selected, editing, overflow) {
-      const typeLabel = item.type === "text" ? this.t("textLabel") : this.t("imageLabel");
+      const layoutMode = this.isLayoutMode?.() || item.type === "layout";
+      const typeLabel = layoutMode
+        ? this.t("layoutLabel")
+        : (item.type === "text" ? this.t("textLabel") : this.t("imageLabel"));
       const positionLabel = item.positioned ? ` · ${this.t("positioned")}` : "";
+      const offsetLabel = layoutMode ? this.layoutOffsetLabel?.(item) || "" : "";
       const className = [
         "box",
-        item.type === "text" ? "box-text" : "box-image",
+        layoutMode ? "box-layout" : (item.type === "text" ? "box-text" : "box-image"),
         item.positioned ? "is-positioned" : "",
         selected ? "is-selected" : "",
         editing ? "is-editing" : "",
@@ -366,12 +390,15 @@ boxTemplate(item, rect, selected, editing, overflow) {
         <div class="${className}"
           data-item-id="${escapeAttr(item.id)}"
           style="left:${round(rect.left)}px;top:${round(rect.top)}px;width:${round(rect.width)}px;height:${round(rect.height)}px">
-          <span class="box-label">${typeLabel}${positionLabel}${overflow ? ` ${this.t("overflow")}` : ""}</span>
+          <span class="box-label">${typeLabel}${positionLabel}${offsetLabel}${overflow ? ` ${this.t("overflow")}` : ""}</span>
         </div>
       `;
     },
 
 itemBoxElement(item) {
+      if (this.isLayoutMode?.()) {
+        return this.layoutTargetForItem?.(item) || item?.frameElement || item?.element;
+      }
       return item?.frameElement || item?.element;
     },
 
@@ -383,6 +410,8 @@ refreshToolbar() {
       const item = this.selectedItem();
       this.shadow.querySelector("[data-role='summary']").textContent = this.summaryText();
       this.refreshExportModeControl();
+      this.refreshModeButtons?.();
+      this.refreshBoxesButton();
 
       if (item?.type === "text") {
         const style = this.toolbarTextStyle(item);
@@ -410,6 +439,16 @@ refreshToolbar() {
 
       this.positionEditPopover(item);
       this.repositionOpenFloatingControls();
+    },
+
+refreshBoxesButton() {
+      const button = this.shadow?.querySelector("[data-action='toggle-boxes']");
+      if (!button) {
+        return;
+      }
+      button.textContent = this.showBoxes ? this.t("boxesOn") : this.t("boxesOff");
+      button.classList.toggle("is-active", this.showBoxes);
+      button.setAttribute("aria-pressed", this.showBoxes ? "true" : "false");
     },
 
 handleComboOption(option) {
@@ -586,10 +625,10 @@ refreshExportModeControl() {
         return;
       }
 
-      const selectionType = item?.type || "none";
+      const selectionType = item && this.isLayoutMode?.() ? "layout" : (item?.type || "none");
       this.editPopover.dataset.selection = selectionType;
 
-      if (!item || !["text", "image"].includes(selectionType)) {
+      if (!item || !["text", "image", "layout"].includes(selectionType)) {
         this.editPopover.hidden = true;
         delete this.editPopover.dataset.itemId;
         return;
@@ -714,11 +753,16 @@ template() {
           <div class="toolbar-body">
             <div class="summary" data-role="summary">${escapeHtml(this.t("ready"))}</div>
 
+            <div class="mode-switch" role="group" aria-label="${escapeAttr(this.t("layoutMode"))}">
+              <button type="button" data-action="content-mode">${escapeHtml(this.t("contentMode"))}</button>
+              <button type="button" data-action="layout-mode">${escapeHtml(this.t("layoutMode"))}</button>
+            </div>
+
             <div class="group group-default">
               <button type="button" data-action="undo">${escapeHtml(this.t("undo"))}</button>
               <button type="button" data-action="redo">${escapeHtml(this.t("redo"))}</button>
               <button type="button" data-action="rescan">${escapeHtml(this.t("rescan"))}</button>
-              <button type="button" data-action="toggle-boxes">${escapeHtml(this.t("boxes"))}</button>
+              <button type="button" data-action="toggle-boxes" aria-pressed="${this.showBoxes ? "true" : "false"}">${escapeHtml(this.showBoxes ? this.t("boxesOn") : this.t("boxesOff"))}</button>
               <button type="button" data-action="language">${escapeHtml(this.t("language"))}</button>
               <label class="save-mode">${escapeHtml(this.t("saveMode"))}
                 <select data-control="exportMode" title="${escapeAttr(this.t("saveMode"))}">
@@ -775,6 +819,10 @@ template() {
               <button type="button" data-action="zoom-out">${escapeHtml(this.t("zoomOut"))}</button>
               <button type="button" data-action="zoom-in">${escapeHtml(this.t("zoomIn"))}</button>
               <button type="button" data-action="image-reset">${escapeHtml(this.t("reset"))}</button>
+            </div>
+
+            <div class="group group-layout">
+              <button type="button" data-action="layout-reset">${escapeHtml(this.t("resetLayout"))}</button>
             </div>
         </div>
         <div class="combo-menu font-menu" data-combo-menu="fontFamily" role="listbox" hidden></div>
