@@ -25,6 +25,7 @@
       this.lang = DEFAULT_LANG;
       this.exportMode = "basic";
       this.editMode = "content";
+      this.layoutToolMode = "moveScale";
       this.colorHistory = [];
       this.colorPickers = new Map();
       this.openCombo = null;
@@ -41,6 +42,8 @@
       this.redoStack = [];
       this.drag = null;
       this.layoutDrag = null;
+      this.layoutScaleDrag = null;
+      this.layoutResizeDrag = null;
       this.suppressLayoutClickUntil = 0;
       this.scanTimer = 0;
       this.startupScanTimers = [];

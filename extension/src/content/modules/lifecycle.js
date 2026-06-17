@@ -227,6 +227,12 @@ async handleAction(action) {
         case "layout-mode":
           this.setEditorMode?.("layout");
           return;
+        case "layout-tool-move-scale":
+          this.setLayoutToolMode?.("moveScale");
+          return;
+        case "layout-tool-size":
+          this.setLayoutToolMode?.("size");
+          return;
         case "undo":
           this.undo();
           return;

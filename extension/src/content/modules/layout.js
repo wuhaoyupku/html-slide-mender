@@ -15,8 +15,14 @@
   const LAYOUT_CUSTOM_PROPS = {
     x: "--hsm-layout-x",
     y: "--hsm-layout-y",
-    baseTransform: "--hsm-layout-base-transform"
+    scale: "--hsm-layout-scale",
+    width: "--hsm-layout-width",
+    height: "--hsm-layout-height",
+    baseTransform: "--hsm-layout-base-transform",
+    baseWidth: "--hsm-layout-base-width",
+    baseHeight: "--hsm-layout-base-height"
   };
+  const EMPTY_LAYOUT_STYLE_VALUE = "__hsm_empty__";
 
   const LAYOUT_TAG_SELECTOR = [
     "[data-layout-editable]",
@@ -40,6 +46,25 @@
     return text && text !== "none" ? text : "";
   }
 
+  function encodeLayoutStyleValue(value) {
+    return value || EMPTY_LAYOUT_STYLE_VALUE;
+  }
+
+  function decodeLayoutStyleValue(value) {
+    const text = String(value || "").trim();
+    if (!text) {
+      return null;
+    }
+    if (text === EMPTY_LAYOUT_STYLE_VALUE) {
+      return "";
+    }
+    return text;
+  }
+
+  function finiteLayoutNumber(value) {
+    return Number.isFinite(value) ? value : null;
+  }
+
   function hasVisiblePaint(style) {
     const hasBackground = style.backgroundImage !== "none" ||
       !/^rgba?\(\s*0\s*,\s*0\s*,\s*0\s*(?:,\s*0\s*)?\)$/i.test(style.backgroundColor || "") &&
@@ -59,6 +84,21 @@ isLayoutMode() {
 
 toggleLayoutMode() {
       this.setEditorMode(this.isLayoutMode() ? "content" : "layout");
+    },
+
+normalizeLayoutToolMode(mode) {
+      return mode === "size" ? "size" : "moveScale";
+    },
+
+setLayoutToolMode(mode) {
+      const nextMode = this.normalizeLayoutToolMode(mode);
+      if (this.layoutToolMode === nextMode) {
+        this.refreshLayoutToolButtons?.();
+        return;
+      }
+      this.layoutToolMode = nextMode;
+      this.refreshLayoutToolButtons?.();
+      this.renderBoxes?.();
     },
 
 setEditorMode(mode) {
@@ -183,6 +223,22 @@ refreshModeButtons() {
       layoutButton?.setAttribute("aria-pressed", active ? "true" : "false");
     },
 
+refreshLayoutToolButtons() {
+      const activeMode = this.normalizeLayoutToolMode?.(this.layoutToolMode) || "moveScale";
+      const modeMap = {
+        "layout-tool-move-scale": activeMode === "moveScale",
+        "layout-tool-size": activeMode === "size"
+      };
+      for (const [action, active] of Object.entries(modeMap)) {
+        const button = this.shadow?.querySelector(`[data-action='${action}']`);
+        if (!button) {
+          continue;
+        }
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+      }
+    },
+
 layoutAdjustmentFor(item) {
       const target = this.layoutTargetForItem(item);
       if (!item || !target) {
@@ -198,11 +254,23 @@ layoutAdjustmentFor(item) {
         target.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.baseTransform) ||
         target.style.transform
       );
+      const storedBaseWidth = decodeLayoutStyleValue(target.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.baseWidth));
+      const storedBaseHeight = decodeLayoutStyleValue(target.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.baseHeight));
+      const width = Number.parseFloat(target.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.width));
+      const height = Number.parseFloat(target.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.height));
       const adjustment = {
         target,
         x: readLayoutNumber(target, LAYOUT_CUSTOM_PROPS.x, 0),
         y: readLayoutNumber(target, LAYOUT_CUSTOM_PROPS.y, 0),
+        scale: readLayoutNumber(target, LAYOUT_CUSTOM_PROPS.scale, 1),
+        width: finiteLayoutNumber(width),
+        height: finiteLayoutNumber(height),
         baseTransform,
+        baseTransformOrigin: target.style.transformOrigin || "",
+        baseWidthStyle: storedBaseWidth ?? (target.style.width || ""),
+        baseHeightStyle: storedBaseHeight ?? (target.style.height || ""),
+        hasBaseWidthStyle: storedBaseWidth !== null,
+        hasBaseHeightStyle: storedBaseHeight !== null,
         risk: item.layoutRisk || "safe"
       };
       this.layoutAdjustments.set(item.id, adjustment);
@@ -213,8 +281,10 @@ composeLayoutTransform(adjustment) {
       const base = normalizedTransform(adjustment?.baseTransform);
       const x = Math.round(adjustment?.x || 0);
       const y = Math.round(adjustment?.y || 0);
+      const scale = round(clamp(adjustment?.scale || 1, 0.2, 5), 3);
       const movement = x || y ? `translate(${x}px, ${y}px)` : "";
-      return [base, movement].filter(Boolean).join(" ");
+      const resize = scale !== 1 ? `scale(${scale})` : "";
+      return [base, movement, resize].filter(Boolean).join(" ");
     },
 
 applyLayoutAdjustment(item, adjustment) {
@@ -225,12 +295,32 @@ applyLayoutAdjustment(item, adjustment) {
 
       adjustment.x = round(clamp(adjustment.x || 0, -4000, 4000));
       adjustment.y = round(clamp(adjustment.y || 0, -4000, 4000));
-      target.style.setProperty(LAYOUT_CUSTOM_PROPS.x, String(Math.round(adjustment.x)));
-      target.style.setProperty(LAYOUT_CUSTOM_PROPS.y, String(Math.round(adjustment.y)));
+      adjustment.scale = round(clamp(adjustment.scale || 1, 0.2, 5), 3);
+      const hasLayoutAdjustment = adjustment.x || adjustment.y || adjustment.scale !== 1;
+      if (hasLayoutAdjustment) {
+        target.style.setProperty(LAYOUT_CUSTOM_PROPS.x, String(Math.round(adjustment.x)));
+        target.style.setProperty(LAYOUT_CUSTOM_PROPS.y, String(Math.round(adjustment.y)));
+        target.style.setProperty(LAYOUT_CUSTOM_PROPS.scale, String(adjustment.scale));
+      } else {
+        target.style.removeProperty(LAYOUT_CUSTOM_PROPS.x);
+        target.style.removeProperty(LAYOUT_CUSTOM_PROPS.y);
+        target.style.removeProperty(LAYOUT_CUSTOM_PROPS.scale);
+      }
       if (adjustment.baseTransform) {
-        target.style.setProperty(LAYOUT_CUSTOM_PROPS.baseTransform, adjustment.baseTransform);
+        if (hasLayoutAdjustment) {
+          target.style.setProperty(LAYOUT_CUSTOM_PROPS.baseTransform, adjustment.baseTransform);
+        } else {
+          target.style.removeProperty(LAYOUT_CUSTOM_PROPS.baseTransform);
+        }
       } else {
         target.style.removeProperty(LAYOUT_CUSTOM_PROPS.baseTransform);
+      }
+      if (adjustment.scale !== 1) {
+        target.style.transformOrigin = target.style.transformOrigin || "center center";
+      } else if (adjustment.baseTransformOrigin) {
+        target.style.transformOrigin = adjustment.baseTransformOrigin;
+      } else {
+        target.style.removeProperty("transform-origin");
       }
       target.style.transform = this.composeLayoutTransform(adjustment);
       if (!target.style.transform) {
@@ -316,6 +406,302 @@ startLayoutDrag(event, item) {
       document.addEventListener("pointermove", onMove, true);
       document.addEventListener("pointerup", onUp, true);
       document.addEventListener("keydown", onKey, true);
+    },
+
+startLayoutScale(event, item, handle) {
+      if (!item || event.button !== 0) {
+        return;
+      }
+
+      const adjustment = this.layoutAdjustmentFor(item);
+      const target = adjustment?.target;
+      if (!target) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      this.commitActiveText?.();
+      this.selectedId = item.id;
+      this.refreshToolbar?.();
+      this.closeOpenMenus?.();
+
+      const rect = target.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const startDistance = Math.max(12, Math.hypot(event.clientX - centerX, event.clientY - centerY));
+      this.layoutScaleDrag = {
+        item,
+        adjustment,
+        handle,
+        before: null,
+        started: false,
+        centerX,
+        centerY,
+        startDistance,
+        originScale: adjustment.scale || 1
+      };
+
+      const box = this.shadow?.querySelector(`[data-item-id='${CSS.escape(item.id)}']`);
+      box?.classList.add("is-layout-scaling");
+
+      const onMove = (moveEvent) => this.handleLayoutScaleMove(moveEvent);
+      const onUp = () => endScale(false);
+      const onKey = (keyEvent) => {
+        if (keyEvent.key !== "Escape") {
+          return;
+        }
+        keyEvent.preventDefault();
+        keyEvent.stopImmediatePropagation();
+        endScale(true);
+      };
+      const endScale = (cancelled) => {
+        document.removeEventListener("pointermove", onMove, true);
+        document.removeEventListener("pointerup", onUp, true);
+        document.removeEventListener("keydown", onKey, true);
+        box?.classList.remove("is-layout-scaling");
+
+        const drag = this.layoutScaleDrag;
+        this.layoutScaleDrag = null;
+        this.suppressLayoutClickUntil = performance.now() + 160;
+
+        if (!drag) {
+          return;
+        }
+
+        if (cancelled && drag.before) {
+          this.restoreState(drag.item, drag.before);
+          this.layoutAdjustments.delete(drag.item.id);
+          this.renderBoxes?.();
+          this.refreshToolbar?.();
+          return;
+        }
+
+        const after = drag.before ? this.captureState(drag.item) : null;
+        if (drag.before && after && !sameState(drag.before, after)) {
+          this.pushHistory(drag.item, drag.before, after, "Scale element");
+          this.markLayoutModified(drag.item);
+          this.renderBoxes?.();
+          this.refreshToolbar?.();
+        }
+      };
+
+      document.addEventListener("pointermove", onMove, true);
+      document.addEventListener("pointerup", onUp, true);
+      document.addEventListener("keydown", onKey, true);
+    },
+
+handleLayoutScaleMove(event) {
+      const drag = this.layoutScaleDrag;
+      if (!drag) {
+        return;
+      }
+
+      const distance = Math.max(4, Math.hypot(event.clientX - drag.centerX, event.clientY - drag.centerY));
+      const ratio = distance / drag.startDistance;
+      if (!drag.started && Math.abs(distance - drag.startDistance) < 3) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      if (!drag.started) {
+        this.ensureOriginalState(drag.item);
+        drag.before = this.captureState(drag.item);
+        drag.started = true;
+      }
+
+      drag.adjustment.scale = clamp(drag.originScale * ratio, 0.2, 5);
+      this.applyLayoutAdjustment(drag.item, drag.adjustment);
+      this.renderBoxes?.();
+    },
+
+startLayoutResize(event, item, handle) {
+      if (!item || event.button !== 0) {
+        return;
+      }
+
+      const axes = this.layoutResizeAxes(handle);
+      if (!axes.width && !axes.height) {
+        return;
+      }
+
+      const adjustment = this.layoutAdjustmentFor(item);
+      const target = adjustment?.target;
+      if (!target) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      this.commitActiveText?.();
+      this.selectedId = item.id;
+      this.refreshToolbar?.();
+      this.closeOpenMenus?.();
+
+      const rect = target.getBoundingClientRect();
+      const style = getComputedStyle(target);
+      const originWidth = Number.parseFloat(style.width) || rect.width;
+      const originHeight = Number.parseFloat(style.height) || rect.height;
+      this.layoutResizeDrag = {
+        item,
+        adjustment,
+        handle,
+        axes,
+        before: null,
+        started: false,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: adjustment.x || 0,
+        originY: adjustment.y || 0,
+        originWidth,
+        originHeight,
+        scale: clamp(adjustment.scale || 1, 0.2, 5)
+      };
+
+      const box = this.shadow?.querySelector(`[data-item-id='${CSS.escape(item.id)}']`);
+      box?.classList.add("is-layout-resizing");
+
+      const onMove = (moveEvent) => this.handleLayoutResizeMove(moveEvent);
+      const onUp = () => endResize(false);
+      const onKey = (keyEvent) => {
+        if (keyEvent.key !== "Escape") {
+          return;
+        }
+        keyEvent.preventDefault();
+        keyEvent.stopImmediatePropagation();
+        endResize(true);
+      };
+      const endResize = (cancelled) => {
+        document.removeEventListener("pointermove", onMove, true);
+        document.removeEventListener("pointerup", onUp, true);
+        document.removeEventListener("keydown", onKey, true);
+        box?.classList.remove("is-layout-resizing");
+
+        const drag = this.layoutResizeDrag;
+        this.layoutResizeDrag = null;
+        this.suppressLayoutClickUntil = performance.now() + 160;
+
+        if (!drag) {
+          return;
+        }
+
+        if (cancelled && drag.before) {
+          this.restoreState(drag.item, drag.before);
+          this.layoutAdjustments.delete(drag.item.id);
+          this.renderBoxes?.();
+          this.refreshToolbar?.();
+          return;
+        }
+
+        const after = drag.before ? this.captureState(drag.item) : null;
+        if (drag.before && after && !sameState(drag.before, after)) {
+          this.pushHistory(drag.item, drag.before, after, "Resize element");
+          this.markLayoutModified(drag.item);
+          this.renderBoxes?.();
+          this.refreshToolbar?.();
+        }
+      };
+
+      document.addEventListener("pointermove", onMove, true);
+      document.addEventListener("pointerup", onUp, true);
+      document.addEventListener("keydown", onKey, true);
+    },
+
+layoutResizeAxes(handle) {
+      const name = String(handle || "");
+      const x = name.includes("e") ? 1 : (name.includes("w") ? -1 : 0);
+      const y = name.includes("s") ? 1 : (name.includes("n") ? -1 : 0);
+      return {
+        x,
+        y,
+        width: x !== 0,
+        height: y !== 0
+      };
+    },
+
+ensureLayoutSizeBase(adjustment, axes) {
+      const target = adjustment?.target;
+      if (!target?.style) {
+        return;
+      }
+      if (axes.width && !adjustment.hasBaseWidthStyle) {
+        adjustment.baseWidthStyle = target.style.width || "";
+        adjustment.hasBaseWidthStyle = true;
+        target.style.setProperty(LAYOUT_CUSTOM_PROPS.baseWidth, encodeLayoutStyleValue(adjustment.baseWidthStyle));
+      }
+      if (axes.height && !adjustment.hasBaseHeightStyle) {
+        adjustment.baseHeightStyle = target.style.height || "";
+        adjustment.hasBaseHeightStyle = true;
+        target.style.setProperty(LAYOUT_CUSTOM_PROPS.baseHeight, encodeLayoutStyleValue(adjustment.baseHeightStyle));
+      }
+    },
+
+applyLayoutSizeAdjustment(item, adjustment) {
+      const target = adjustment?.target || this.layoutTargetForItem(item);
+      if (!target || !adjustment) {
+        return;
+      }
+
+      if (Number.isFinite(adjustment.width)) {
+        adjustment.width = round(clamp(adjustment.width, 8, 8000));
+        target.style.width = `${adjustment.width}px`;
+        target.style.setProperty(LAYOUT_CUSTOM_PROPS.width, String(adjustment.width));
+      }
+      if (Number.isFinite(adjustment.height)) {
+        adjustment.height = round(clamp(adjustment.height, 8, 8000));
+        target.style.height = `${adjustment.height}px`;
+        target.style.setProperty(LAYOUT_CUSTOM_PROPS.height, String(adjustment.height));
+      }
+    },
+
+handleLayoutResizeMove(event) {
+      const drag = this.layoutResizeDrag;
+      if (!drag) {
+        return;
+      }
+
+      const rawDeltaX = event.clientX - drag.startX;
+      const rawDeltaY = event.clientY - drag.startY;
+      const activeDeltaX = drag.axes.width ? rawDeltaX : 0;
+      const activeDeltaY = drag.axes.height ? rawDeltaY : 0;
+      if (!drag.started && Math.hypot(activeDeltaX, activeDeltaY) < 3) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      if (!drag.started) {
+        this.ensureOriginalState(drag.item);
+        drag.before = this.captureState(drag.item);
+        this.ensureLayoutSizeBase(drag.adjustment, drag.axes);
+        drag.started = true;
+      }
+
+      const deltaX = rawDeltaX / drag.scale;
+      const deltaY = rawDeltaY / drag.scale;
+      if (drag.axes.width) {
+        const rawWidth = drag.axes.x > 0 ? drag.originWidth + deltaX : drag.originWidth - deltaX;
+        const nextWidth = clamp(rawWidth, 8, 8000);
+        drag.adjustment.width = nextWidth;
+        if (drag.axes.x < 0) {
+          drag.adjustment.x = drag.originX + (drag.originWidth - nextWidth);
+        }
+      }
+      if (drag.axes.height) {
+        const rawHeight = drag.axes.y > 0 ? drag.originHeight + deltaY : drag.originHeight - deltaY;
+        const nextHeight = clamp(rawHeight, 8, 8000);
+        drag.adjustment.height = nextHeight;
+        if (drag.axes.y < 0) {
+          drag.adjustment.y = drag.originY + (drag.originHeight - nextHeight);
+        }
+      }
+
+      this.applyLayoutSizeAdjustment(drag.item, drag.adjustment);
+      this.applyLayoutAdjustment(drag.item, drag.adjustment);
+      this.renderBoxes?.();
     },
 
 handleLayoutDragMove(event) {
@@ -446,14 +832,42 @@ clearLayoutAdjustment(item) {
 styleWithoutLayoutAdjustment(target, adjustment) {
       const clone = target.cloneNode(false);
       clone.setAttribute("style", target.getAttribute("style") || "");
+      const storedBaseWidth = decodeLayoutStyleValue(clone.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.baseWidth));
+      const storedBaseHeight = decodeLayoutStyleValue(clone.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.baseHeight));
+      const baseWidth = adjustment?.hasBaseWidthStyle ? adjustment.baseWidthStyle : storedBaseWidth;
+      const baseHeight = adjustment?.hasBaseHeightStyle ? adjustment.baseHeightStyle : storedBaseHeight;
       clone.style.removeProperty(LAYOUT_CUSTOM_PROPS.x);
       clone.style.removeProperty(LAYOUT_CUSTOM_PROPS.y);
+      clone.style.removeProperty(LAYOUT_CUSTOM_PROPS.scale);
+      clone.style.removeProperty(LAYOUT_CUSTOM_PROPS.width);
+      clone.style.removeProperty(LAYOUT_CUSTOM_PROPS.height);
       clone.style.removeProperty(LAYOUT_CUSTOM_PROPS.baseTransform);
+      clone.style.removeProperty(LAYOUT_CUSTOM_PROPS.baseWidth);
+      clone.style.removeProperty(LAYOUT_CUSTOM_PROPS.baseHeight);
+      if (baseWidth !== null && baseWidth !== undefined) {
+        if (baseWidth) {
+          clone.style.width = baseWidth;
+        } else {
+          clone.style.removeProperty("width");
+        }
+      }
+      if (baseHeight !== null && baseHeight !== undefined) {
+        if (baseHeight) {
+          clone.style.height = baseHeight;
+        } else {
+          clone.style.removeProperty("height");
+        }
+      }
       const base = normalizedTransform(adjustment?.baseTransform);
       if (base) {
         clone.style.transform = base;
       } else {
         clone.style.removeProperty("transform");
+      }
+      if (adjustment?.baseTransformOrigin) {
+        clone.style.transformOrigin = adjustment.baseTransformOrigin;
+      } else {
+        clone.style.removeProperty("transform-origin");
       }
       return clone.getAttribute("style") || "";
     },
@@ -489,10 +903,23 @@ layoutOffsetLabel(item) {
       const adjustment = this.layoutAdjustmentFor(item);
       const x = Math.round(adjustment?.x || 0);
       const y = Math.round(adjustment?.y || 0);
-      if (!x && !y) {
+      const scale = round(adjustment?.scale || 1, 2);
+      const width = Number.isFinite(adjustment?.width) ? Math.round(adjustment.width) : null;
+      const height = Number.isFinite(adjustment?.height) ? Math.round(adjustment.height) : null;
+      if (!x && !y && scale === 1 && width === null && height === null) {
         return "";
       }
-      return ` · x ${x >= 0 ? "+" : ""}${x} / y ${y >= 0 ? "+" : ""}${y}`;
+      const position = (x || y) ? ` · x ${x >= 0 ? "+" : ""}${x} / y ${y >= 0 ? "+" : ""}${y}` : "";
+      const resize = scale !== 1 ? ` · ${Math.round(scale * 100)}%` : "";
+      const sizeParts = [];
+      if (width !== null) {
+        sizeParts.push(`w ${width}`);
+      }
+      if (height !== null) {
+        sizeParts.push(`h ${height}`);
+      }
+      const size = sizeParts.length ? ` · ${sizeParts.join(" / ")}` : "";
+      return `${position}${resize}${size}`;
     },
 
 isLayoutCurrentlyAdjusted(item) {
@@ -502,7 +929,17 @@ isLayoutCurrentlyAdjusted(item) {
       }
       const x = readLayoutNumber(target, LAYOUT_CUSTOM_PROPS.x, 0);
       const y = readLayoutNumber(target, LAYOUT_CUSTOM_PROPS.y, 0);
-      return Boolean(x || y || target.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.baseTransform));
+      const scale = readLayoutNumber(target, LAYOUT_CUSTOM_PROPS.scale, 1);
+      return Boolean(
+        x ||
+        y ||
+        scale !== 1 ||
+        target.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.baseTransform) ||
+        target.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.width) ||
+        target.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.height) ||
+        target.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.baseWidth) ||
+        target.style.getPropertyValue(LAYOUT_CUSTOM_PROPS.baseHeight)
+      );
     },
 
 layoutElementsForExport() {

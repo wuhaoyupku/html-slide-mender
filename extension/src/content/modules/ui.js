@@ -293,6 +293,23 @@ bindUiEvents() {
           if (!item) {
             return;
           }
+          const resizeHandle = event.target.closest("[data-layout-resize-handle]");
+          if (resizeHandle) {
+            this.startLayoutResize?.(event, item, resizeHandle.dataset.layoutResizeHandle);
+            return;
+          }
+          const scaleHandle = event.target.closest("[data-layout-scale-handle]");
+          if (scaleHandle) {
+            this.startLayoutScale?.(event, item, scaleHandle.dataset.layoutScaleHandle);
+            return;
+          }
+          if ((this.normalizeLayoutToolMode?.(this.layoutToolMode) || "moveScale") === "size") {
+            event.preventDefault();
+            event.stopPropagation();
+            this.closeOpenMenus();
+            this.selectItem(item.id);
+            return;
+          }
           this.startLayoutDrag?.(event, item);
           return;
         }
@@ -380,6 +397,7 @@ boxTemplate(item, rect, selected, editing, overflow) {
       const className = [
         "box",
         layoutMode ? "box-layout" : (item.type === "text" ? "box-text" : "box-image"),
+        layoutMode && (this.normalizeLayoutToolMode?.(this.layoutToolMode) || "moveScale") === "size" ? "is-layout-size-mode" : "",
         item.positioned ? "is-positioned" : "",
         selected ? "is-selected" : "",
         editing ? "is-editing" : "",
@@ -391,7 +409,37 @@ boxTemplate(item, rect, selected, editing, overflow) {
           data-item-id="${escapeAttr(item.id)}"
           style="left:${round(rect.left)}px;top:${round(rect.top)}px;width:${round(rect.width)}px;height:${round(rect.height)}px">
           <span class="box-label">${typeLabel}${positionLabel}${offsetLabel}${overflow ? ` ${this.t("overflow")}` : ""}</span>
+          ${layoutMode && selected ? this.layoutHandlesTemplate() : ""}
         </div>
+      `;
+    },
+
+layoutHandlesTemplate() {
+      return (this.normalizeLayoutToolMode?.(this.layoutToolMode) || "moveScale") === "size"
+        ? this.layoutResizeHandlesTemplate()
+        : this.layoutScaleHandlesTemplate();
+    },
+
+layoutScaleHandlesTemplate() {
+      return `
+        <button class="layout-handle handle-nw" type="button" data-layout-scale-handle="nw" aria-label="${escapeAttr(this.t("scaleLayout"))}"></button>
+        <button class="layout-handle handle-ne" type="button" data-layout-scale-handle="ne" aria-label="${escapeAttr(this.t("scaleLayout"))}"></button>
+        <button class="layout-handle handle-se" type="button" data-layout-scale-handle="se" aria-label="${escapeAttr(this.t("scaleLayout"))}"></button>
+        <button class="layout-handle handle-sw" type="button" data-layout-scale-handle="sw" aria-label="${escapeAttr(this.t("scaleLayout"))}"></button>
+      `;
+    },
+
+layoutResizeHandlesTemplate() {
+      const label = escapeAttr(this.t("resizeLayout"));
+      return `
+        <button class="layout-handle layout-resize-handle handle-nw" type="button" data-layout-resize-handle="nw" aria-label="${label}"></button>
+        <button class="layout-handle layout-resize-handle handle-n" type="button" data-layout-resize-handle="n" aria-label="${label}"></button>
+        <button class="layout-handle layout-resize-handle handle-ne" type="button" data-layout-resize-handle="ne" aria-label="${label}"></button>
+        <button class="layout-handle layout-resize-handle handle-e" type="button" data-layout-resize-handle="e" aria-label="${label}"></button>
+        <button class="layout-handle layout-resize-handle handle-se" type="button" data-layout-resize-handle="se" aria-label="${label}"></button>
+        <button class="layout-handle layout-resize-handle handle-s" type="button" data-layout-resize-handle="s" aria-label="${label}"></button>
+        <button class="layout-handle layout-resize-handle handle-sw" type="button" data-layout-resize-handle="sw" aria-label="${label}"></button>
+        <button class="layout-handle layout-resize-handle handle-w" type="button" data-layout-resize-handle="w" aria-label="${label}"></button>
       `;
     },
 
@@ -411,6 +459,7 @@ refreshToolbar() {
       this.shadow.querySelector("[data-role='summary']").textContent = this.summaryText();
       this.refreshExportModeControl();
       this.refreshModeButtons?.();
+      this.refreshLayoutToolButtons?.();
       this.refreshBoxesButton();
 
       if (item?.type === "text") {
@@ -822,6 +871,8 @@ template() {
             </div>
 
             <div class="group group-layout">
+              <button type="button" data-action="layout-tool-move-scale" aria-pressed="${this.layoutToolMode === "moveScale" ? "true" : "false"}">${escapeHtml(this.t("moveScaleMode"))}</button>
+              <button type="button" data-action="layout-tool-size" aria-pressed="${this.layoutToolMode === "size" ? "true" : "false"}">${escapeHtml(this.t("sizeMode"))}</button>
               <button type="button" data-action="layout-reset">${escapeHtml(this.t("resetLayout"))}</button>
             </div>
         </div>
