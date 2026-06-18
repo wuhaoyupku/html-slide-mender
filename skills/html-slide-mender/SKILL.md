@@ -1,5 +1,5 @@
 ---
-name: html-slide-mender
+name: html-mender
 description: Visual editor for local or saved HTML files, especially HTML PPTs, AI-generated presentation pages, one-page web slide decks, and dynamic JavaScript slide pages. Use this skill whenever the user wants to make a local HTML editable, edit or modify an HTML PPT, fix text, replace images, adjust layout/position/size, move/scale/resize/stretch a title/image/card/block, or says phrases like “修改这个 HTML”, “HTML PPT 可编辑”, “标题往上一点”, “调整版面”, or “改宽高”. Clean export patches text/images/backgrounds/layout styles back into the original source HTML instead of saving runtime DOM. Do not use for live websites, authenticated online pages, generic source-code edits, or PPTX/PowerPoint files; ask for a saved local HTML copy first.
 version: 0.1.10
 metadata:
@@ -10,9 +10,9 @@ metadata:
         - node
 ---
 
-# HTML Slide Mender
+# HTML Mender
 
-Use this skill to turn a local `.html` deck into a browser-editable copy. It is built for HTML PPTs and AI-generated slide pages where the user wants small visual edits instead of regenerating the whole page.
+Use this skill to turn a local `.html` deck into a browser-editable copy. It was formerly published as HTML Slide Mender and is built for HTML PPTs and AI-generated slide pages where the user wants small visual edits instead of regenerating the whole page.
 
 ## Core Behavior
 

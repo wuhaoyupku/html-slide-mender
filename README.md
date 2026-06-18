@@ -1,6 +1,6 @@
-# HTML Slide Mender
+# HTML Mender
 
-HTML Slide Mender 让 **HTML PPT / AI 生成的网页演示稿** 可以在浏览器里直接修稿：改文字、换图片、调样式、微调位置和尺寸，然后下载一份干净的 HTML。
+HTML Mender（原 HTML Slide Mender）让 **HTML PPT / AI 生成的网页演示稿** 可以在浏览器里直接修稿：改文字、换图片、调样式、微调位置和尺寸，然后下载一份干净的 HTML。
 
 它适合 AI 生成 HTML PPT 后的最后一轮人工修改，尤其是“一页网页里包含多页 PPT”的动态页面。导出时会从原始 HTML 出发，只把文字、图片、背景图和版面样式改回去，尽量保留原来的脚本、动画、翻页逻辑和页面结构。
 
@@ -21,7 +21,7 @@ HTML Slide Mender 让 **HTML PPT / AI 生成的网页演示稿** 可以在浏览
 对 Codex 或类似 coding agent 说：
 
 ```text
-请从 https://github.com/wuhaoyupku/html-slide-mender 安装 html-slide-mender 技能。
+请从 ClawHub 安装 html-mender 技能。（旧名 html-slide-mender 也会跳转到它。）
 ```
 
 安装后继续说：
@@ -129,9 +129,9 @@ prototypes/                   早期原型资产
 
 ---
 
-# HTML Slide Mender
+# HTML Mender
 
-HTML Slide Mender lets you visually edit **HTML slide decks and AI-generated presentation pages** in the browser: edit text, replace images, adjust styles, fine-tune layout, resize elements, and export clean HTML.
+HTML Mender, formerly HTML Slide Mender, lets you visually edit **HTML slide decks and AI-generated presentation pages** in the browser: edit text, replace images, adjust styles, fine-tune layout, resize elements, and export clean HTML.
 
 It is designed for the final editing pass after an AI has generated an HTML deck, especially dynamic one-page decks that contain multiple slides. On export, it starts from the original source HTML and patches back only text, image, background, and layout-style changes, preserving scripts, animations, navigation, and page structure as much as possible.
 
@@ -152,7 +152,7 @@ It is designed for the final editing pass after an AI has generated an HTML deck
 Tell Codex or a similar coding agent:
 
 ```text
-Please install the html-slide-mender skill from https://github.com/wuhaoyupku/html-slide-mender.
+Please install the html-mender skill from ClawHub. The old html-slide-mender name redirects to it.
 ```
 
 Then ask:
