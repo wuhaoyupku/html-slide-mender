@@ -11,7 +11,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   handleMessage(message, sender)
     .then((response) => sendResponse(response))
     .catch((error) => {
-      console.error("[HTML Slide Mender]", error);
+      console.error("[HTML Mender]", error);
       sendResponse({ ok: false, error: readableError(error) });
     });
 

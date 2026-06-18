@@ -17,6 +17,6 @@ If this repository has security advisories enabled, use GitHub private vulnerabi
 
 ## Security Model
 
-HTML Slide Mender edits user-opened pages only after the user starts the extension or opens a skill-injected local HTML copy.
+HTML Mender edits user-opened pages only after the user starts the extension or opens a skill-injected local HTML copy.
 
 The MVP does not write back to live websites or overwrite local source files. The durable save path is downloading a new HTML file.

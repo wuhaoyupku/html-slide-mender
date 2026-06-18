@@ -30,5 +30,5 @@
 
 ## 0.1.6
 
-- Published the initial HTML Slide Mender skill and browser-extension workflow.
+- Published the initial HTML Mender skill and browser-extension workflow under its original HTML Slide Mender name.
 - Supported local HTML deck injection, visual text editing, image replacement, and clean source-based HTML export.

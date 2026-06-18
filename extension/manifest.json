@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "HTML Slide Mender",
+  "name": "HTML Mender",
   "version": "0.1.0",
   "description": "Edit visible text and images in HTML slide pages, then export a clean HTML copy.",
   "minimum_chrome_version": "114",
   "action": {
-    "default_title": "HTML Slide Mender",
+    "default_title": "HTML Mender",
     "default_popup": "src/popup/popup.html"
   },
   "background": {

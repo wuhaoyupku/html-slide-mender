@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve HTML Slide Mender.
+Thanks for helping improve HTML Mender.
 
 ## Development Setup
 

@@ -1,4 +1,4 @@
-/* Vaadin Web Components bundle for HTML Slide Mender. Built from @vaadin/combo-box. */
+/* Vaadin Web Components bundle for HTML Mender. Built from @vaadin/combo-box. */
 var HtmlSlideMenderVaadinBundle = (() => {
   // node_modules/@vaadin/component-base/src/define.js
   window.Vaadin ||= {};

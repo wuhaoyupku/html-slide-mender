@@ -45,7 +45,7 @@
   <!-- Plugin top toolbar -->
   <rect x="42" y="98" width="1356" height="82" fill="#ffffff" stroke="#d9e1ea"/>
   <rect x="66" y="118" width="170" height="42" rx="8" fill="#1f2937"/>
-  <text x="86" y="145" class="sans small" fill="#ffffff" font-weight="800">HTML Slide Mender</text>
+  <text x="86" y="145" class="sans small" fill="#ffffff" font-weight="800">HTML Mender</text>
 
   <rect x="258" y="116" width="126" height="46" rx="8" fill="#f4f7fb" stroke="#d8e0ea"/>
   <text x="272" y="134" class="sans tiny muted">字体</text>

@@ -18,7 +18,7 @@ await build({
   outfile,
   legalComments: "eof",
   banner: {
-    js: "/* Vaadin Web Components bundle for HTML Slide Mender. Built from @vaadin/combo-box. */"
+    js: "/* Vaadin Web Components bundle for HTML Mender. Built from @vaadin/combo-box. */"
   }
 });
 

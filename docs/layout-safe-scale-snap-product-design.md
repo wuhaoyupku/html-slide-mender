@@ -2,7 +2,7 @@
 
 ## 目标
 
-HTML Slide Mender 的“位置微调”用于解决 HTML PPT 最后一轮排版问题：
+HTML Mender 的“位置微调”用于解决 HTML PPT 最后一轮排版问题：
 
 - 元素差一点没对齐。
 - 标题、图片或卡片需要微移。

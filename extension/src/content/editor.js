@@ -17,7 +17,7 @@
 
   if (previous?.editor?.active) {
     Promise.resolve(previous.editor.exit()).catch((error) => {
-      console.warn("[HTML Slide Mender] Failed to dispose previous editor.", error);
+      console.warn("[HTML Mender] Failed to dispose previous editor.", error);
     });
   }
 
@@ -31,7 +31,7 @@
     editor.handleCommand(message.command, message.payload)
       .then((response) => sendResponse(response))
       .catch((error) => {
-        console.error("[HTML Slide Mender]", error);
+        console.error("[HTML Mender]", error);
         sendResponse({ ok: false, error: error?.message || String(error) });
       });
 

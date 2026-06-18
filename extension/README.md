@@ -1,4 +1,4 @@
-# HTML Slide Mender Extension
+# HTML Mender Extension
 
 Chrome-compatible Manifest V3 extension for visually editing local or saved HTML slide pages, then exporting a clean HTML copy.
 
