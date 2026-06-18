@@ -47,8 +47,8 @@ html-mender
 ### 从源码使用
 
 ```bash
-git clone https://github.com/wuhaoyupku/html-slide-mender.git
-cd html-slide-mender
+git clone https://github.com/wuhaoyupku/html-mender.git
+cd html-mender
 npx -y skills add ./skills/html-slide-mender
 ```
 
@@ -180,8 +180,8 @@ After installing, open an HTML deck and click the extension action. For local `f
 ### Use From Source
 
 ```bash
-git clone https://github.com/wuhaoyupku/html-slide-mender.git
-cd html-slide-mender
+git clone https://github.com/wuhaoyupku/html-mender.git
+cd html-mender
 npx -y skills add ./skills/html-slide-mender
 ```
 

@@ -4,7 +4,7 @@ description: Visual editor for local or saved HTML files, especially HTML PPTs, 
 version: 0.1.10
 metadata:
   openclaw:
-    homepage: https://github.com/wuhaoyupku/html-slide-mender
+    homepage: https://github.com/wuhaoyupku/html-mender
     requires:
       bins:
         - node
