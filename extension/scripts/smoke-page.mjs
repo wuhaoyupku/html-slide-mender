@@ -172,6 +172,18 @@ try {
     throw new Error(`Unexpected editable box counts: ${JSON.stringify(boxCounts)}`);
   }
 
+  const toolbarCompactState = await page.evaluate(() => {
+    const root = document.querySelector("#html-slide-mender-root");
+    const shadow = root.shadowRoot;
+    return {
+      hasModeSwitch: Boolean(shadow.querySelector(".mode-switch, [data-action='layout-mode'], [data-action='content-mode']")),
+      summary: shadow.querySelector("[data-role='summary']")?.textContent || ""
+    };
+  });
+  if (toolbarCompactState.hasModeSwitch || toolbarCompactState.summary.length > 12) {
+    throw new Error(`Toolbar did not stay compact: ${JSON.stringify(toolbarCompactState)}`);
+  }
+
   const pristineSourceExport = await page.evaluate(() => {
     return window.__htmlSlideMenderBootstrap.editor.serializeSourceBasedHtml(skillSourceHtml);
   });
@@ -992,6 +1004,38 @@ try {
     throw new Error(`Clicking outside text did not dismiss the edit popover: ${JSON.stringify(textDismissState)}`);
   }
 
+  const textMoveCursorProbe = await page.evaluate(() => {
+    const editor = window.__htmlSlideMenderBootstrap.editor;
+    const text = document.querySelector("p");
+    const item = Array.from(editor.items.values()).find((candidate) => candidate.element === text);
+    editor.setEditorMode("content");
+    editor.selectItem(item.id);
+    editor.renderBoxes();
+    const root = document.querySelector("#html-slide-mender-root");
+    const box = root.shadowRoot.querySelector(`.box[data-item-id='${CSS.escape(item.id)}']`);
+    const label = box.querySelector("[data-direct-move-handle]");
+    const rect = box.getBoundingClientRect();
+    return {
+      itemId: item.id,
+      labelCursor: getComputedStyle(label).cursor,
+      edgePoint: { x: rect.left + Math.min(24, rect.width / 3), y: rect.top + 2 }
+    };
+  });
+  await page.mouse.move(textMoveCursorProbe.edgePoint.x, textMoveCursorProbe.edgePoint.y);
+  const textMoveCursorState = await page.evaluate((itemId) => {
+    const root = document.querySelector("#html-slide-mender-root");
+    const box = root.shadowRoot.querySelector(`.box[data-item-id='${CSS.escape(itemId)}']`);
+    const label = box.querySelector("[data-direct-move-handle]");
+    return {
+      boxCursor: getComputedStyle(box).cursor,
+      labelCursor: getComputedStyle(label).cursor,
+      moveHit: box.classList.contains("is-direct-move-hit")
+    };
+  }, textMoveCursorProbe.itemId);
+  if (textMoveCursorState.boxCursor !== "grab" || textMoveCursorState.labelCursor !== "grab" || !textMoveCursorState.moveHit) {
+    throw new Error(`Selected text did not show a movable cursor on its draggable border: ${JSON.stringify({ before: textMoveCursorProbe, after: textMoveCursorState })}`);
+  }
+
   const imagePoint = await page.evaluate(() => {
     const root = document.querySelector("#html-slide-mender-root");
     const box = root.shadowRoot.querySelector(".box-image");
@@ -1028,6 +1072,110 @@ try {
   if (!imagePopoverState.toolbarHasGlobalDownload || imagePopoverState.toolbarHasImageControls) {
     throw new Error(`Global toolbar changed after selecting image: ${JSON.stringify(imagePopoverState)}`);
   }
+
+  async function dragFromPoint(point, dx, dy) {
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down();
+    await page.mouse.move(point.x + dx, point.y + dy);
+    await page.mouse.up();
+  }
+
+  const firstImageDirectBefore = await page.evaluate(() => {
+    const editor = window.__htmlSlideMenderBootstrap.editor;
+    editor.setEditorMode("content");
+    editor.scan();
+    const image = document.querySelector(".hero-art img") || document.querySelector("img");
+    const item = Array.from(editor.items.values()).find((candidate) => candidate.element === image);
+    if (!item) {
+      throw new Error("Could not find the first deck image item.");
+    }
+    const frame = item.frameElement || image.parentElement || image;
+    frame.removeAttribute("style");
+    editor.layoutAdjustments.delete(item.id);
+    editor.originalStates.delete(item.id);
+    editor.selectItem(item.id);
+    editor.renderBoxes();
+    const root = document.querySelector("#html-slide-mender-root");
+    const box = root.shadowRoot.querySelector(`.box[data-item-id='${CSS.escape(item.id)}']`).getBoundingClientRect();
+    return {
+      id: item.id,
+      parentStyle: frame.getAttribute("style"),
+      point: { x: box.left + box.width / 2, y: box.top + box.height / 2 },
+      box: { left: Math.round(box.left), top: Math.round(box.top), width: Math.round(box.width), height: Math.round(box.height) }
+    };
+  });
+
+  if (firstImageDirectBefore.parentStyle !== null) {
+    throw new Error(`Initial image frame should start without inline style: ${JSON.stringify(firstImageDirectBefore)}`);
+  }
+
+  await dragFromPoint(firstImageDirectBefore.point, 46, 28);
+  const firstImageDirectAfter = await page.evaluate((itemId) => {
+    const editor = window.__htmlSlideMenderBootstrap.editor;
+    const item = editor.items.get(itemId);
+    const frame = item.frameElement || item.element.parentElement || item.element;
+    const box = document.querySelector("#html-slide-mender-root").shadowRoot.querySelector(`.box[data-item-id='${CSS.escape(itemId)}']`).getBoundingClientRect();
+    return {
+      parentStyle: frame.getAttribute("style"),
+      box: { left: Math.round(box.left), top: Math.round(box.top), width: Math.round(box.width), height: Math.round(box.height) }
+    };
+  }, firstImageDirectBefore.id);
+
+  if (
+    firstImageDirectAfter.box.left <= firstImageDirectBefore.box.left ||
+    firstImageDirectAfter.box.top <= firstImageDirectBefore.box.top ||
+    !firstImageDirectAfter.parentStyle
+  ) {
+    throw new Error(`First direct image drag did not move the frame from a clean baseline: ${JSON.stringify({ before: firstImageDirectBefore, after: firstImageDirectAfter })}`);
+  }
+
+  await page.keyboard.press("Control+Z");
+  const firstImageDirectUndo = await page.waitForFunction((before) => {
+    const editor = window.__htmlSlideMenderBootstrap.editor;
+    const item = editor.items.get(before.id);
+    const frame = item.frameElement || item.element.parentElement || item.element;
+    const box = document.querySelector("#html-slide-mender-root").shadowRoot.querySelector(`.box[data-item-id='${CSS.escape(before.id)}']`).getBoundingClientRect();
+    const restored = Math.abs(box.left - before.box.left) <= 1 && Math.abs(box.top - before.box.top) <= 1 && frame.getAttribute("style") === null;
+    return restored
+      ? { parentStyle: frame.getAttribute("style"), box: { left: Math.round(box.left), top: Math.round(box.top), width: Math.round(box.width), height: Math.round(box.height) } }
+      : false;
+  }, firstImageDirectBefore).then((handle) => handle.jsonValue());
+
+  if (firstImageDirectUndo.parentStyle !== null) {
+    throw new Error(`Ctrl+Z did not remove the first image frame style: ${JSON.stringify(firstImageDirectUndo)}`);
+  }
+
+  await dragFromPoint(firstImageDirectBefore.point, 38, 18);
+  const firstSequentialMove = await page.evaluate((itemId) => {
+    const box = document.querySelector("#html-slide-mender-root").shadowRoot.querySelector(`.box[data-item-id='${CSS.escape(itemId)}']`).getBoundingClientRect();
+    return {
+      point: { x: box.left + box.width / 2, y: box.top + box.height / 2 },
+      box: { left: Math.round(box.left), top: Math.round(box.top), width: Math.round(box.width), height: Math.round(box.height) }
+    };
+  }, firstImageDirectBefore.id);
+
+  await dragFromPoint(firstSequentialMove.point, 32, 16);
+  const secondSequentialMove = await page.evaluate((itemId) => {
+    const box = document.querySelector("#html-slide-mender-root").shadowRoot.querySelector(`.box[data-item-id='${CSS.escape(itemId)}']`).getBoundingClientRect();
+    return { left: Math.round(box.left), top: Math.round(box.top), width: Math.round(box.width), height: Math.round(box.height) };
+  }, firstImageDirectBefore.id);
+
+  if (
+    secondSequentialMove.left <= firstSequentialMove.box.left + 12 ||
+    secondSequentialMove.top <= firstSequentialMove.box.top + 6
+  ) {
+    throw new Error(`Sequential direct image drag appeared to snap back: ${JSON.stringify({ first: firstSequentialMove, second: secondSequentialMove })}`);
+  }
+
+  await page.keyboard.press("Control+Z");
+  await page.keyboard.press("Control+Z");
+  await page.waitForFunction((before) => {
+    const editor = window.__htmlSlideMenderBootstrap.editor;
+    const item = editor.items.get(before.id);
+    const frame = item.frameElement || item.element.parentElement || item.element;
+    const box = document.querySelector("#html-slide-mender-root").shadowRoot.querySelector(`.box[data-item-id='${CSS.escape(before.id)}']`).getBoundingClientRect();
+    return Math.abs(box.left - before.box.left) <= 1 && Math.abs(box.top - before.box.top) <= 1 && frame.getAttribute("style") === null;
+  }, firstImageDirectBefore);
 
   await page.mouse.click(24, 300);
   const imageDismissState = await page.evaluate(() => {
@@ -1100,7 +1248,7 @@ try {
     throw new Error(`Image frame changed while applying fit modes: ${JSON.stringify({ before: imageFrameBefore.box, after: imageFrameAfterFit })}`);
   }
 
-  const imageDragBefore = await page.evaluate(() => {
+  const imageFrameMoveBefore = await page.evaluate(() => {
     const root = document.querySelector("#html-slide-mender-root");
     const box = root.shadowRoot.querySelector(".box-image").getBoundingClientRect();
     const image = document.querySelector("img");
@@ -1115,7 +1263,7 @@ try {
   await page.mouse.move(imagePoint.x + 80, imagePoint.y + 50);
   await page.mouse.up();
 
-  const imageDragAfter = await page.evaluate(() => {
+  const imageFrameMoveAfter = await page.evaluate(() => {
     const root = document.querySelector("#html-slide-mender-root");
     const box = root.shadowRoot.querySelector(".box-image").getBoundingClientRect();
     const image = document.querySelector("img");
@@ -1127,11 +1275,68 @@ try {
     };
   });
 
-  if (!imageDragAfter.transform.includes("translate(80px, 50px)") || imageDragAfter.x !== "80" || imageDragAfter.y !== "50") {
-    throw new Error(`Image content drag was not applied: ${JSON.stringify(imageDragAfter)}`);
+  if (
+    imageFrameMoveAfter.box.left <= imageFrameMoveBefore.box.left ||
+    imageFrameMoveAfter.box.top <= imageFrameMoveBefore.box.top ||
+    imageFrameMoveAfter.x !== "0" ||
+    imageFrameMoveAfter.y !== "0"
+  ) {
+    throw new Error(`Default image drag did not move the image frame: ${JSON.stringify({ before: imageFrameMoveBefore, after: imageFrameMoveAfter })}`);
   }
-  if (JSON.stringify(imageDragBefore.box) !== JSON.stringify(imageDragAfter.box)) {
-    throw new Error(`Image frame moved during internal drag: ${JSON.stringify({ before: imageDragBefore.box, after: imageDragAfter.box })}`);
+
+  await page.keyboard.press("Control+Z");
+  await page.waitForFunction((beforeBox) => {
+    const root = document.querySelector("#html-slide-mender-root");
+    const box = root.shadowRoot.querySelector(".box-image").getBoundingClientRect();
+    return Math.abs(box.left - beforeBox.left) <= 1 && Math.abs(box.top - beforeBox.top) <= 1;
+  }, imageFrameMoveBefore.box);
+
+  const imageFrameUndoState = await page.evaluate(() => {
+    const root = document.querySelector("#html-slide-mender-root");
+    const box = root.shadowRoot.querySelector(".box-image").getBoundingClientRect();
+    return { left: box.left, top: box.top, width: box.width, height: box.height };
+  });
+  if (Math.abs(imageFrameUndoState.left - imageFrameMoveBefore.box.left) > 1 || Math.abs(imageFrameUndoState.top - imageFrameMoveBefore.box.top) > 1) {
+    throw new Error(`Ctrl+Z did not restore default image frame drag: ${JSON.stringify({ before: imageFrameMoveBefore.box, after: imageFrameUndoState })}`);
+  }
+
+  await page.evaluate(() => window.__htmlSlideMenderBootstrap.editor.redo());
+  const imageFrameRedoState = await page.waitForFunction((movedBox) => {
+    const root = document.querySelector("#html-slide-mender-root");
+    const box = root.shadowRoot.querySelector(".box-image").getBoundingClientRect();
+    return Math.abs(box.left - movedBox.left) <= 1 && Math.abs(box.top - movedBox.top) <= 1
+      ? { left: box.left, top: box.top, width: box.width, height: box.height }
+      : false;
+  }, imageFrameMoveAfter.box).then((handle) => handle.jsonValue());
+
+  const imageContentPoint = {
+    x: imageFrameRedoState.left + imageFrameRedoState.width / 2,
+    y: imageFrameRedoState.top + imageFrameRedoState.height / 2
+  };
+  await page.keyboard.down("Alt");
+  await page.mouse.move(imageContentPoint.x, imageContentPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(imageContentPoint.x + 80, imageContentPoint.y + 50);
+  await page.mouse.up();
+  await page.keyboard.up("Alt");
+
+  const imageContentDragAfter = await page.evaluate(() => {
+    const root = document.querySelector("#html-slide-mender-root");
+    const box = root.shadowRoot.querySelector(".box-image").getBoundingClientRect();
+    const image = document.querySelector("img");
+    return {
+      transform: image.style.transform,
+      x: image.style.getPropertyValue("--hsm-image-x"),
+      y: image.style.getPropertyValue("--hsm-image-y"),
+      box: { left: box.left, top: box.top, width: box.width, height: box.height }
+    };
+  });
+
+  if (!imageContentDragAfter.transform.includes("translate(80px, 50px)") || imageContentDragAfter.x !== "80" || imageContentDragAfter.y !== "50") {
+    throw new Error(`Advanced image content drag was not applied with Alt: ${JSON.stringify(imageContentDragAfter)}`);
+  }
+  if (JSON.stringify(imageFrameMoveAfter.box) !== JSON.stringify(imageContentDragAfter.box)) {
+    throw new Error(`Image frame moved during Alt internal drag: ${JSON.stringify({ before: imageFrameMoveAfter.box, after: imageContentDragAfter.box })}`);
   }
 
   await clickToolbarAction("zoom-in");
@@ -1184,8 +1389,8 @@ try {
   if (replacementApplied.x !== "0" || replacementApplied.y !== "0") {
     throw new Error(`Image replacement did not recenter content: ${JSON.stringify(replacementApplied)}`);
   }
-  if (JSON.stringify(imageDragBefore.box) !== JSON.stringify(replacementApplied.box)) {
-    throw new Error(`Image frame changed after replacement: ${JSON.stringify({ before: imageDragBefore.box, after: replacementApplied.box })}`);
+  if (JSON.stringify(imageContentDragAfter.box) !== JSON.stringify(replacementApplied.box)) {
+    throw new Error(`Image frame changed after replacement: ${JSON.stringify({ before: imageContentDragAfter.box, after: replacementApplied.box })}`);
   }
 
   const loosePoint = await page.evaluate(() => {
@@ -1332,38 +1537,229 @@ try {
     throw new Error(`Inserted image disappeared after reset + replace: ${JSON.stringify(addedReplacementState)}`);
   }
 
-  const addedImageResizeState = await page.evaluate(() => {
+  const addedImageDirectBefore = await page.evaluate(() => {
     const editor = window.__htmlSlideMenderBootstrap.editor;
     const image = document.querySelector("[data-hsm-added='image']");
     const item = Array.from(editor.items.values()).find((candidate) => candidate.element === image);
     editor.selectItem(item.id);
-    editor.setEditorMode("layout");
-    const adjustment = editor.layoutAdjustmentFor(item);
-    const target = adjustment.target;
-    const before = target.getBoundingClientRect();
-    editor.ensureLayoutSizeBase(adjustment, { width: true, height: true });
-    adjustment.width = before.width + 48;
-    adjustment.height = before.height + 24;
-    editor.applyLayoutSizeAdjustment(item, adjustment);
-    const after = target.getBoundingClientRect();
-    target.style.left = "24px";
-    target.style.top = "16px";
     editor.setEditorMode("content");
+    editor.renderBoxes();
+    const root = document.querySelector("#html-slide-mender-root");
+    const shadow = root.shadowRoot;
+    const box = shadow.querySelector(`.box[data-item-id='${CSS.escape(item.id)}']`);
+    if (!box) {
+      throw new Error(`Selected inserted image box was not rendered: ${JSON.stringify({
+        itemId: item.id,
+        selectedId: editor.selectedId,
+        mode: editor.editMode,
+        boxes: shadow.querySelectorAll(".box").length
+      })}`);
+    }
+    const handle = box.querySelector("[data-direct-resize-handle='ne']");
+    const label = box.querySelector("[data-direct-move-handle]");
+    if (!handle || !label) {
+      throw new Error(`Selected inserted image box is missing direct handles: ${box.outerHTML}`);
+    }
+    const boxRect = box.getBoundingClientRect();
+    const handleRect = handle.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
     return {
-      before: { width: Math.round(before.width), height: Math.round(before.height) },
-      after: { width: Math.round(after.width), height: Math.round(after.height) },
+      box: { left: Math.round(boxRect.left), top: Math.round(boxRect.top), width: Math.round(boxRect.width), height: Math.round(boxRect.height) },
+      ratio: boxRect.width / boxRect.height,
+      handles: box.querySelectorAll("[data-direct-resize-handle]").length,
+      handlePoint: { x: handleRect.left + handleRect.width / 2, y: handleRect.top + handleRect.height / 2 },
+      labelPoint: { x: labelRect.left + labelRect.width / 2, y: labelRect.top + labelRect.height / 2 }
+    };
+  });
+
+  if (addedImageDirectBefore.handles !== 8) {
+    throw new Error(`Content-mode direct resize handles were not rendered: ${JSON.stringify(addedImageDirectBefore)}`);
+  }
+
+  await page.mouse.move(addedImageDirectBefore.handlePoint.x, addedImageDirectBefore.handlePoint.y);
+  await page.mouse.down();
+  await page.mouse.move(addedImageDirectBefore.handlePoint.x + 36, addedImageDirectBefore.handlePoint.y - 18);
+  await page.mouse.up();
+
+  const addedImageResizeState = await page.evaluate(() => {
+    const editor = window.__htmlSlideMenderBootstrap.editor;
+    const image = document.querySelector("[data-hsm-added='image']");
+    const item = Array.from(editor.items.values()).find((candidate) => candidate.element === image);
+    const target = editor.layoutTargetForItem(item);
+    const box = document.querySelector("#html-slide-mender-root").shadowRoot.querySelector(`.box[data-item-id='${CSS.escape(item.id)}']`);
+    const boxRect = box.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const label = box.querySelector("[data-direct-move-handle]");
+    const labelRect = label.getBoundingClientRect();
+    return {
+      box: { left: Math.round(boxRect.left), top: Math.round(boxRect.top), width: Math.round(boxRect.width), height: Math.round(boxRect.height) },
+      target: { width: Math.round(targetRect.width), height: Math.round(targetRect.height) },
+      ratio: boxRect.width / boxRect.height,
       minWidth: target.style.minWidth,
       maxWidth: target.style.maxWidth,
       frameWidth: image.style.getPropertyValue("--hsm-frame-width"),
-      frameHeight: image.style.getPropertyValue("--hsm-frame-height")
+      frameHeight: image.style.getPropertyValue("--hsm-frame-height"),
+      labelPoint: { x: labelRect.left + labelRect.width / 2, y: labelRect.top + labelRect.height / 2 }
     };
   });
 
   if (
-    addedImageResizeState.after.width <= addedImageResizeState.before.width ||
-    addedImageResizeState.after.height <= addedImageResizeState.before.height
+    addedImageResizeState.box.width <= addedImageDirectBefore.box.width ||
+    addedImageResizeState.box.height <= addedImageDirectBefore.box.height ||
+    Math.abs(addedImageResizeState.ratio - addedImageDirectBefore.ratio) > 0.04
   ) {
-    throw new Error(`Inserted image frame resize did not apply: ${JSON.stringify(addedImageResizeState)}`);
+    throw new Error(`Content-mode direct image resize did not apply cleanly: ${JSON.stringify({ before: addedImageDirectBefore, after: addedImageResizeState })}`);
+  }
+
+  await page.keyboard.press("Control+Z");
+  const addedImageResizeUndoState = await page.waitForFunction((beforeBox) => {
+    const image = document.querySelector("[data-hsm-added='image']");
+    const root = image?.parentElement?.matches?.("[data-hsm-image-frame]") ? image.parentElement : image;
+    const rect = root?.getBoundingClientRect();
+    return rect &&
+      Math.abs(rect.width - beforeBox.width) <= 1 &&
+      Math.abs(rect.height - beforeBox.height) <= 1
+        ? { width: Math.round(rect.width), height: Math.round(rect.height) }
+        : false;
+  }, addedImageDirectBefore.box).then((handle) => handle.jsonValue());
+
+  if (
+    Math.abs(addedImageResizeUndoState.width - addedImageDirectBefore.box.width) > 1 ||
+    Math.abs(addedImageResizeUndoState.height - addedImageDirectBefore.box.height) > 1
+  ) {
+    throw new Error(`Ctrl+Z did not undo direct image resize while focus was in editor UI: ${JSON.stringify({ before: addedImageDirectBefore, after: addedImageResizeUndoState })}`);
+  }
+
+  await page.keyboard.press("Control+Shift+Z");
+  await page.waitForFunction((resizedBox) => {
+    const image = document.querySelector("[data-hsm-added='image']");
+    const root = image?.parentElement?.matches?.("[data-hsm-image-frame]") ? image.parentElement : image;
+    const rect = root?.getBoundingClientRect();
+    return rect &&
+      Math.abs(rect.width - resizedBox.width) <= 1 &&
+      Math.abs(rect.height - resizedBox.height) <= 1;
+  }, addedImageResizeState.box);
+
+  await page.mouse.move(addedImageResizeState.labelPoint.x, addedImageResizeState.labelPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(addedImageResizeState.labelPoint.x + 36, addedImageResizeState.labelPoint.y + 20);
+  await page.mouse.up();
+
+  const addedImageMoveState = await page.evaluate(() => {
+    const editor = window.__htmlSlideMenderBootstrap.editor;
+    const image = document.querySelector("[data-hsm-added='image']");
+    const item = Array.from(editor.items.values()).find((candidate) => candidate.element === image);
+    const box = document.querySelector("#html-slide-mender-root").shadowRoot.querySelector(`.box[data-item-id='${CSS.escape(item.id)}']`);
+    const rect = box.getBoundingClientRect();
+    return {
+      left: Math.round(rect.left),
+      top: Math.round(rect.top),
+      layoutX: editor.layoutAdjustmentFor(item)?.x || 0,
+      layoutY: editor.layoutAdjustmentFor(item)?.y || 0
+    };
+  });
+
+  if (
+    (
+      Math.abs(addedImageMoveState.left - addedImageResizeState.box.left) <= 1 &&
+      Math.abs(addedImageMoveState.top - addedImageResizeState.box.top) <= 1
+    ) ||
+    (
+      !addedImageMoveState.layoutX &&
+      !addedImageMoveState.layoutY
+    )
+  ) {
+    throw new Error(`Content-mode direct image move did not apply: ${JSON.stringify({ before: addedImageResizeState, after: addedImageMoveState })}`);
+  }
+
+  await page.waitForTimeout(180);
+
+  const contentMultiSelectPoints = await page.evaluate(() => {
+    const editor = window.__htmlSlideMenderBootstrap.editor;
+    editor.clearSelection();
+    editor.setEditorMode("content");
+    editor.renderBoxes();
+    const text = document.querySelector("[data-hsm-added='text']");
+    const image = document.querySelector("[data-hsm-added='image']");
+    const textItem = Array.from(editor.items.values()).find((candidate) => candidate.element === text);
+    const imageItem = Array.from(editor.items.values()).find((candidate) => candidate.element === image);
+    const shadow = document.querySelector("#html-slide-mender-root").shadowRoot;
+    const textBox = shadow.querySelector(`.box[data-item-id='${CSS.escape(textItem.id)}']`).getBoundingClientRect();
+    const imageBox = shadow.querySelector(`.box[data-item-id='${CSS.escape(imageItem.id)}']`).getBoundingClientRect();
+    const textPoint = { x: textBox.left + textBox.width / 2, y: textBox.top + textBox.height / 2 };
+    const imagePoint = { x: imageBox.left + imageBox.width / 2, y: imageBox.top + imageBox.height / 2 };
+    return {
+      text: textPoint,
+      image: imagePoint,
+      textHit: shadow.elementFromPoint(textPoint.x, textPoint.y)?.className || "",
+      imageHit: shadow.elementFromPoint(imagePoint.x, imagePoint.y)?.className || ""
+    };
+  });
+
+  await page.evaluate(() => {
+    const editor = window.__htmlSlideMenderBootstrap.editor;
+    const text = document.querySelector("[data-hsm-added='text']");
+    const image = document.querySelector("[data-hsm-added='image']");
+    const textItem = Array.from(editor.items.values()).find((candidate) => candidate.element === text);
+    const imageItem = Array.from(editor.items.values()).find((candidate) => candidate.element === image);
+    const shadow = document.querySelector("#html-slide-mender-root").shadowRoot;
+    const clickWithMeta = (box) => {
+      const rect = box.getBoundingClientRect();
+      const eventOptions = {
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+        button: 0,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+        metaKey: true
+      };
+      box.dispatchEvent(new PointerEvent("pointerdown", eventOptions));
+      box.dispatchEvent(new PointerEvent("pointerup", eventOptions));
+      box.dispatchEvent(new MouseEvent("click", eventOptions));
+    };
+    clickWithMeta(shadow.querySelector(`.box[data-item-id='${CSS.escape(textItem.id)}']`));
+    clickWithMeta(shadow.querySelector(`.box[data-item-id='${CSS.escape(imageItem.id)}']`));
+  });
+
+  const contentMultiSelectState = await page.evaluate(() => {
+    const root = document.querySelector("#html-slide-mender-root");
+    const shadow = root.shadowRoot;
+    return {
+      selectedBoxes: shadow.querySelectorAll(".box.is-selected").length,
+      popoverSelection: shadow.querySelector("[data-role='edit-popover']").dataset.selection,
+      layoutSelection: shadow.querySelector("[data-role='edit-popover']").dataset.layoutSelection,
+      textEditable: document.querySelector("[data-hsm-added='text']").isContentEditable
+    };
+  });
+
+  if (
+    contentMultiSelectState.selectedBoxes !== 2 ||
+    contentMultiSelectState.popoverSelection !== "layout" ||
+    contentMultiSelectState.layoutSelection !== "multi" ||
+    contentMultiSelectState.textEditable
+  ) {
+    throw new Error(`Content-mode Ctrl/Meta multi-select did not enter layout controls: ${JSON.stringify({ points: contentMultiSelectPoints, state: contentMultiSelectState })}`);
+  }
+
+  await page.evaluate(() => {
+    const root = document.querySelector("#html-slide-mender-root");
+    root.shadowRoot.querySelector("[data-action='layout-align-top']").click();
+  });
+
+  const contentAlignState = await page.evaluate(() => {
+    const text = document.querySelector("[data-hsm-added='text']").getBoundingClientRect();
+    const image = document.querySelector("[data-hsm-added='image']");
+    const imageRoot = image.parentElement?.matches?.("[data-hsm-image-frame]") ? image.parentElement : image;
+    const imageRect = imageRoot.getBoundingClientRect();
+    return {
+      textTop: Math.round(text.top),
+      imageTop: Math.round(imageRect.top)
+    };
+  });
+
+  if (Math.abs(contentAlignState.textTop - contentAlignState.imageTop) > 1) {
+    throw new Error(`Content-mode multi-select alignment did not apply: ${JSON.stringify(contentAlignState)}`);
   }
 
   const addedElementState = await page.evaluate(() => {

@@ -260,7 +260,7 @@ bindUiEvents() {
       });
 
       this.layer.addEventListener("click", (event) => {
-        const box = event.target.closest("[data-item-id]");
+        const box = this.boxFromOverlayEvent?.(event);
         if (!box) {
           return;
         }
@@ -270,10 +270,10 @@ bindUiEvents() {
         if (!item) {
           return;
         }
+        if (performance.now() < (this.suppressLayoutClickUntil || 0)) {
+          return;
+        }
         if (this.isLayoutMode?.()) {
-          if (performance.now() < (this.suppressLayoutClickUntil || 0)) {
-            return;
-          }
           this.closeOpenMenus();
           if (this.isSelectionToggleEvent?.(event)) {
             this.selectItem(item.id, { toggle: true });
@@ -285,6 +285,10 @@ bindUiEvents() {
           return;
         }
         this.closeOpenMenus();
+        if (this.isSelectionToggleEvent?.(event)) {
+          this.selectItem(item.id, { toggle: true });
+          return;
+        }
         this.selectItem(item.id);
         if (item.type === "text") {
           this.enterTextEdit(item, event);
@@ -292,7 +296,7 @@ bindUiEvents() {
       });
 
       this.layer.addEventListener("pointerdown", (event) => {
-        const box = event.target.closest("[data-item-id]");
+        const box = this.boxFromOverlayEvent?.(event);
         if (!box) {
           return;
         }
@@ -324,17 +328,124 @@ bindUiEvents() {
           this.startLayoutDrag?.(event, item);
           return;
         }
-        if (!item || item.type !== "image") {
+        if (!item || !["text", "image"].includes(item.type)) {
           return;
         }
-        event.preventDefault();
-        event.stopPropagation();
-        this.closeOpenMenus();
-        this.selectItem(item.id);
-        this.startImageContentDrag(event, item);
+
+        if (this.isSelectionToggleEvent?.(event)) {
+          return;
+        }
+
+        const directResizeHandle = event.target.closest("[data-direct-resize-handle]");
+        if (directResizeHandle) {
+          this.startLayoutResize?.(event, item, directResizeHandle.dataset.directResizeHandle, {
+            preserveAspectRatio: this.directResizePreservesAspect?.(directResizeHandle.dataset.directResizeHandle)
+          });
+          return;
+        }
+
+        if (this.isDirectMoveHit?.(event, box)) {
+          this.startLayoutDrag?.(event, item);
+          return;
+        }
+
+        if (item.type === "image") {
+          if (event.altKey) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.closeOpenMenus();
+            this.selectItem(item.id);
+            this.startImageContentDrag(event, item);
+            return;
+          }
+          this.startLayoutDrag?.(event, item);
+        }
+      });
+
+      this.layer.addEventListener("pointermove", (event) => {
+        this.refreshDirectMoveCursor?.(event);
+      });
+
+      this.layer.addEventListener("pointerleave", () => {
+        this.clearDirectMoveCursor?.();
       });
 
       this.fileInput.addEventListener("change", () => this.handleImageFile());
+    },
+
+boxFromOverlayEvent(event) {
+      const directBox = event.target.closest?.(".box[data-item-id]");
+      if (event.target.closest?.("[data-direct-resize-handle], [data-layout-resize-handle], [data-layout-scale-handle], [data-direct-move-handle]")) {
+        return directBox;
+      }
+      if (directBox) {
+        return directBox;
+      }
+
+      const boxes = typeof this.shadow?.elementsFromPoint === "function"
+        ? this.shadow.elementsFromPoint(event.clientX, event.clientY)
+            .map((element) => element.closest?.(".box[data-item-id]"))
+            .filter(Boolean)
+        : [];
+      const unique = Array.from(new Set(boxes));
+      if (!unique.length) {
+        return directBox;
+      }
+      return unique[0] || directBox;
+    },
+
+directResizePreservesAspect(handle) {
+      const name = String(handle || "");
+      return name.includes("n") || name.includes("s") ? (name.includes("e") || name.includes("w")) : false;
+    },
+
+    refreshDirectMoveCursor(event) {
+      const box = this.boxFromOverlayEvent?.(event);
+      const item = box ? this.items.get(box.dataset.itemId) : null;
+      this.clearDirectMoveCursor?.(box);
+      if (
+        !box ||
+        !item ||
+        this.isLayoutMode?.() ||
+        item.type !== "text" ||
+        !box.classList.contains("is-direct-layout") ||
+        !this.isDirectMoveZone?.(event, box)
+      ) {
+        box?.classList.remove("is-direct-move-hit");
+        return false;
+      }
+      box.classList.add("is-direct-move-hit");
+      return true;
+    },
+
+    clearDirectMoveCursor(except = null) {
+      for (const box of this.shadow?.querySelectorAll(".box.is-direct-move-hit") || []) {
+        if (box !== except) {
+          box.classList.remove("is-direct-move-hit");
+        }
+      }
+    },
+
+    isDirectMoveHit(event, box) {
+      if (event.button !== 0) {
+        return false;
+      }
+      return this.isDirectMoveZone(event, box);
+    },
+
+    isDirectMoveZone(event, box) {
+      if (event.target.closest("[data-direct-move-handle]")) {
+        return true;
+      }
+      const rect = box?.getBoundingClientRect?.();
+      if (!rect) {
+        return false;
+      }
+      const inset = 9;
+      return event.clientX - rect.left <= inset ||
+        rect.right - event.clientX <= inset ||
+        event.clientY - rect.top <= inset ||
+        rect.bottom - event.clientY <= inset;
     },
 
 populateFonts() {
@@ -388,9 +499,14 @@ renderBoxes() {
         entries.push({ item, rect, selected, editing, overflow });
       }
 
-      if (this.isLayoutMode?.()) {
-        entries.sort((a, b) => (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height));
-      }
+      entries.sort((a, b) => {
+        const areaDelta = (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height);
+        if (Math.abs(areaDelta) > 1) {
+          return areaDelta;
+        }
+        const typeRank = (entry) => entry.item.type === "text" ? 1 : 0;
+        return typeRank(a) - typeRank(b);
+      });
 
       const boxes = entries.map(({ item, rect, selected, editing, overflow }) => (
         this.boxTemplate(item, rect, selected, editing, overflow)
@@ -400,6 +516,7 @@ renderBoxes() {
 
 boxTemplate(item, rect, selected, editing, overflow) {
       const layoutMode = this.isLayoutMode?.() || item.type === "layout";
+      const directLayout = !layoutMode && selected && item.id === this.selectedId && !editing && ["text", "image"].includes(item.type);
       const typeLabel = layoutMode
         ? this.t("layoutLabel")
         : (item.type === "text" ? this.t("textLabel") : this.t("imageLabel"));
@@ -412,6 +529,7 @@ boxTemplate(item, rect, selected, editing, overflow) {
         item.positioned ? "is-positioned" : "",
         selected ? "is-selected" : "",
         selected && item.id === this.selectedId ? "is-primary" : "",
+        directLayout ? "is-direct-layout" : "",
         editing ? "is-editing" : "",
         overflow ? "has-overflow" : ""
       ].filter(Boolean).join(" ");
@@ -420,9 +538,24 @@ boxTemplate(item, rect, selected, editing, overflow) {
         <div class="${className}"
           data-item-id="${escapeAttr(item.id)}"
           style="left:${round(rect.left)}px;top:${round(rect.top)}px;width:${round(rect.width)}px;height:${round(rect.height)}px">
-          <span class="box-label">${typeLabel}${positionLabel}${offsetLabel}${overflow ? ` ${this.t("overflow")}` : ""}</span>
+          <span class="box-label" data-direct-move-handle="true">${typeLabel}${positionLabel}${offsetLabel}${overflow ? ` ${this.t("overflow")}` : ""}</span>
+          ${directLayout ? this.directResizeHandlesTemplate() : ""}
           ${layoutMode && selected && item.id === this.selectedId ? this.layoutHandlesTemplate() : ""}
         </div>
+      `;
+    },
+
+directResizeHandlesTemplate() {
+      const label = escapeAttr(this.t("resizeLayout"));
+      return `
+        <button class="layout-handle direct-resize-handle handle-nw" type="button" data-direct-resize-handle="nw" aria-label="${label}"></button>
+        <button class="layout-handle direct-resize-handle handle-n" type="button" data-direct-resize-handle="n" aria-label="${label}"></button>
+        <button class="layout-handle direct-resize-handle handle-ne" type="button" data-direct-resize-handle="ne" aria-label="${label}"></button>
+        <button class="layout-handle direct-resize-handle handle-e" type="button" data-direct-resize-handle="e" aria-label="${label}"></button>
+        <button class="layout-handle direct-resize-handle handle-se" type="button" data-direct-resize-handle="se" aria-label="${label}"></button>
+        <button class="layout-handle direct-resize-handle handle-s" type="button" data-direct-resize-handle="s" aria-label="${label}"></button>
+        <button class="layout-handle direct-resize-handle handle-sw" type="button" data-direct-resize-handle="sw" aria-label="${label}"></button>
+        <button class="layout-handle direct-resize-handle handle-w" type="button" data-direct-resize-handle="w" aria-label="${label}"></button>
       `;
     },
 
@@ -695,11 +828,12 @@ refreshExportModeControl() {
         return;
       }
 
-	      const selectionType = item && this.isLayoutMode?.() ? "layout" : (item?.type || "none");
+	      const selectedCount = item ? (this.selectedItems?.().length || 1) : 0;
+	      const selectionType = item && (this.isLayoutMode?.() || selectedCount > 1) ? "layout" : (item?.type || "none");
 	      this.editPopover.dataset.selection = selectionType;
 	      if (selectionType === "layout") {
-	        const selectedCount = this.selectedLayoutItemsFor?.(item).length || 1;
-	        this.editPopover.dataset.layoutSelection = selectedCount > 1 ? "multi" : "single";
+	        const layoutSelectedCount = this.selectedLayoutItemsFor?.(item).length || selectedCount || 1;
+	        this.editPopover.dataset.layoutSelection = layoutSelectedCount > 1 ? "multi" : "single";
 	      } else {
 	        delete this.editPopover.dataset.layoutSelection;
 	      }
@@ -741,11 +875,22 @@ refreshExportModeControl() {
       const fitsBelow = belowTop + popoverRect.height <= viewportHeight - margin;
       const spaceAbove = Math.max(0, rect.top - safeTop - gap);
       const spaceBelow = Math.max(0, viewportHeight - margin - rect.bottom - gap);
-      const placement = fitsAbove ? "top" : (fitsBelow || spaceBelow >= spaceAbove ? "bottom" : "top");
-      const rawTop = placement === "top" ? aboveTop : belowTop;
+      const rightLeft = rect.right + gap;
+      const leftLeft = rect.left - popoverRect.width - gap;
+      const fitsRight = rightLeft + popoverRect.width <= viewportWidth - margin;
+      const fitsLeft = leftLeft >= margin;
+      const useSidePlacement = !fitsAbove && !fitsBelow && (fitsRight || fitsLeft);
+      const placement = useSidePlacement
+        ? (fitsRight ? "right" : "left")
+        : (fitsAbove ? "top" : (fitsBelow || spaceBelow >= spaceAbove ? "bottom" : "top"));
+      const rawTop = placement === "top"
+        ? aboveTop
+        : (placement === "bottom" ? belowTop : rect.top + rect.height / 2 - popoverRect.height / 2);
       const maxTop = Math.max(safeTop, viewportHeight - popoverRect.height - margin);
       const top = clamp(rawTop, safeTop, maxTop);
-      const rawLeft = rect.left + rect.width / 2 - popoverRect.width / 2;
+      const rawLeft = placement === "right"
+        ? rightLeft
+        : (placement === "left" ? leftLeft : rect.left + rect.width / 2 - popoverRect.width / 2);
       const maxLeft = Math.max(margin, viewportWidth - popoverRect.width - margin);
       const left = clamp(rawLeft, margin, maxLeft);
 
@@ -829,11 +974,6 @@ template() {
           </button>
           <div class="toolbar-body">
             <div class="summary" data-role="summary">${escapeHtml(this.t("ready"))}</div>
-
-            <div class="mode-switch" role="group" aria-label="${escapeAttr(this.t("layoutMode"))}">
-              <button type="button" data-action="content-mode">${escapeHtml(this.t("contentMode"))}</button>
-              <button type="button" data-action="layout-mode">${escapeHtml(this.t("layoutMode"))}</button>
-            </div>
 
             <div class="group group-default">
               <button type="button" data-action="undo">${escapeHtml(this.t("undo"))}</button>

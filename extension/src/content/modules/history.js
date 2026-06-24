@@ -87,7 +87,7 @@ captureState(item) {
         srcset: element.getAttribute("srcset") || "",
         pictureSources: this.capturePictureSourceStates?.(element) || [],
         style: element.getAttribute("style") || "",
-        parentStyle: element.parentElement?.getAttribute("style") || null
+        parentStyle: element.parentElement ? element.parentElement.getAttribute("style") : null
       };
     },
 
@@ -117,7 +117,7 @@ restoreState(item, state) {
       restoreAttr(element, "srcset", state.srcset);
       this.restorePictureSourceStates?.(element, state.pictureSources);
       restoreAttr(element, "style", state.style);
-      if (element.parentElement && state.parentStyle !== null) {
+      if (element.parentElement && Object.prototype.hasOwnProperty.call(state, "parentStyle")) {
         restoreAttr(element.parentElement, "style", state.parentStyle);
       }
       this.imageAdjustments?.delete(item.id);

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.13
+
+- Added content-mode direct layout handles for selected text and image elements.
+- Users can now drag the selected border or label to move an element, drag side handles to resize width/height, and drag corner handles to resize proportionally.
+- Default image dragging now moves the image frame; hold Option/Alt to adjust the image content inside the frame.
+- Content mode now supports multi-select with Shift / Cmd / Ctrl and exposes alignment / same-size controls for mixed text-image selections.
+- Improved overlapping box hit order so smaller text/image elements are easier to select when layouts overlap.
+- Moved the edit popover to the side when top/bottom placement would cover large-element handles.
+- Removed the top-level Text/Image vs. Move layout switch from the toolbar.
+- Shortened the toolbar status to "Ready" / "N changed" so it fits in narrow spaces.
+- Fixed Ctrl/Cmd+Z when focus is on editor UI such as image handles or popover controls.
+- Fixed first-drag undo for images whose frame originally had no inline style, and covered sequential image drags so they do not snap back.
+- Added a movable cursor when hovering a selected text box's draggable border or label.
+
 ## 0.1.12
 
 - Added toolbar actions for inserting new text blocks and new images.

@@ -600,7 +600,7 @@ handleLayoutScaleMove(event) {
       this.renderBoxes?.();
     },
 
-startLayoutResize(event, item, handle) {
+startLayoutResize(event, item, handle, options = {}) {
       if (!item || event.button !== 0) {
         return;
       }
@@ -618,6 +618,7 @@ startLayoutResize(event, item, handle) {
           ...entry,
           originWidth: Number.parseFloat(style.width) || rect.width,
           originHeight: Number.parseFloat(style.height) || rect.height,
+          originRatio: rect.height ? rect.width / rect.height : 1,
           scale: clamp(entry.adjustment.scale || 1, 0.2, 5)
         };
       });
@@ -635,6 +636,7 @@ startLayoutResize(event, item, handle) {
         entries,
         handle,
         axes,
+        preserveAspectRatio: Boolean(options.preserveAspectRatio),
         started: false,
         startX: event.clientX,
         startY: event.clientY
@@ -781,17 +783,35 @@ handleLayoutResizeMove(event) {
       for (const entry of drag.entries) {
         const deltaX = rawDeltaX / entry.scale;
         const deltaY = rawDeltaY / entry.scale;
+        let nextWidth = entry.originWidth;
+        let nextHeight = entry.originHeight;
         if (drag.axes.width) {
           const rawWidth = drag.axes.x > 0 ? entry.originWidth + deltaX : entry.originWidth - deltaX;
-          const nextWidth = clamp(rawWidth, 8, 8000);
+          nextWidth = clamp(rawWidth, 8, 8000);
+        }
+        if (drag.axes.height) {
+          const rawHeight = drag.axes.y > 0 ? entry.originHeight + deltaY : entry.originHeight - deltaY;
+          nextHeight = clamp(rawHeight, 8, 8000);
+        }
+
+        if (drag.preserveAspectRatio && drag.axes.width && drag.axes.height) {
+          const ratio = Number.isFinite(entry.originRatio) && entry.originRatio > 0 ? entry.originRatio : 1;
+          const widthChange = Math.abs((nextWidth - entry.originWidth) / Math.max(1, entry.originWidth));
+          const heightChange = Math.abs((nextHeight - entry.originHeight) / Math.max(1, entry.originHeight));
+          if (widthChange >= heightChange) {
+            nextHeight = clamp(nextWidth / ratio, 8, 8000);
+          } else {
+            nextWidth = clamp(nextHeight * ratio, 8, 8000);
+          }
+        }
+
+        if (drag.axes.width) {
           entry.adjustment.width = nextWidth;
           if (drag.axes.x < 0) {
             entry.adjustment.x = entry.originX + (entry.originWidth - nextWidth);
           }
         }
         if (drag.axes.height) {
-          const rawHeight = drag.axes.y > 0 ? entry.originHeight + deltaY : entry.originHeight - deltaY;
-          const nextHeight = clamp(rawHeight, 8, 8000);
           entry.adjustment.height = nextHeight;
           if (drag.axes.y < 0) {
             entry.adjustment.y = entry.originY + (entry.originHeight - nextHeight);

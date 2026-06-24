@@ -110,37 +110,6 @@
       text-overflow: ellipsis;
     }
 
-    .mode-switch {
-      display: inline-flex;
-      align-items: center;
-      min-width: max-content;
-      padding: 3px;
-      border: 1px solid #cfd8e6;
-      border-radius: 8px;
-      background: #f8fafc;
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
-    }
-
-    .mode-switch button {
-      min-height: 30px;
-      border: 0;
-      border-radius: 6px;
-      background: transparent;
-      color: #475569;
-      padding: 0 10px;
-    }
-
-    .mode-switch button:hover {
-      background: #eef4ff;
-      color: #1553c7;
-    }
-
-    .mode-switch button.is-active {
-      background: #1f6fff;
-      color: #ffffff;
-      box-shadow: 0 3px 10px rgba(31, 111, 255, 0.22);
-    }
-
     .group {
       align-items: center;
       gap: 6px;
@@ -805,6 +774,27 @@
       cursor: grab;
     }
 
+    .box.is-direct-layout {
+      border-style: solid;
+    }
+
+    .box-text.is-direct-layout {
+      cursor: text;
+    }
+
+    .box-text.is-direct-layout.is-direct-move-hit {
+      cursor: grab;
+    }
+
+    .box.is-direct-layout .box-label {
+      cursor: grab;
+    }
+
+    .box.is-direct-layout.is-layout-dragging,
+    .box.is-direct-layout.is-layout-dragging .box-label {
+      cursor: grabbing;
+    }
+
     .box-image.is-dragging {
       cursor: grabbing;
       border-style: solid;
@@ -883,8 +873,16 @@
       background: #0f766e;
     }
 
+    .direct-resize-handle {
+      background: #1f6fff;
+    }
+
     .layout-resize-handle:hover {
       background: #0b5f59;
+    }
+
+    .direct-resize-handle:hover {
+      background: #174fc7;
     }
 
     .handle-nw {

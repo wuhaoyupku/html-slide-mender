@@ -60,6 +60,20 @@ node scripts/inject-html-editor.mjs <input.html> \
 
 ## Version Notes
 
+### 0.1.13
+
+- Adds direct border handles in the default text/image editing mode.
+- Drag the selected border or label to move an element.
+- Drag side handles to resize width/height; drag corner handles to resize proportionally.
+- Default image dragging moves the image frame; hold Option/Alt to adjust image content inside the frame.
+- Shift / Cmd / Ctrl multi-select works in default text/image mode and opens alignment / same-size controls.
+- Overlapping text/image boxes are ordered so individual elements are easier to select.
+- Removes the top-level Text/Image vs. Move layout switch because border handles now cover the normal layout workflow.
+- Shortens the toolbar status text to fit in compact toolbars.
+- Fixes Ctrl/Cmd+Z when focus is on editor UI such as image handles or popover controls.
+- Fixes first-drag undo for images whose frame originally had no inline style, and covers sequential image drags so they do not snap back.
+- Adds a movable cursor when hovering a selected text box's draggable border or label.
+
 ### 0.1.12
 
 - Adds `新增文字` / `Add text` and `新增图片` / `Add image` toolbar actions.

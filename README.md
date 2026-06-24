@@ -7,11 +7,11 @@ HTML Mender 让 **HTML PPT / AI 生成的网页演示稿** 可以在浏览器里
 ## 功能
 
 - 编辑文字：字号、颜色、加粗、对齐、行高。
-- 替换图片：填充、适应、拉伸、缩放和拖动。
-- 位置微调：移动标题、图片、卡片和块级元素。
-- 移动缩放：用 `transform: scale(...)` 做安全视觉缩放。
-- 改宽高：写入真实 `width` / `height`，支持只改宽、只改高或自由拉伸。
-- 临时多选：`Shift` / `Cmd` / `Ctrl` 点选多个模块后，可一起移动、缩放、改宽高、对齐或统一尺寸。
+- 新增内容：直接插入新的文字块和图片。
+- 替换图片：填充、适应、拉伸、缩放；默认拖动移动图片框，按住 Option/Alt 可调整图片内部位置。
+- 边框操作：选中文字或图片后，直接拖动边框/标签移动，拖动边缘或角点改大小。
+- 临时多选：`Shift` / `Cmd` / `Ctrl` 点选多个文字/图片/模块后，可一起移动、对齐或统一尺寸。
+- 版面调整：仍支持安全缩放、真实宽高调整和恢复，用于更复杂的标题、卡片和块级元素。
 - 干净导出：移除编辑器 UI 和注入脚本。
 
 ## 使用方式
@@ -70,6 +70,19 @@ node skills/html-slide-mender/scripts/inject-html-editor.mjs /absolute/path/inpu
 5. 打开 HTML PPT 页面，点击扩展图标。
 
 ## 版本说明
+
+### 0.1.13
+
+- 默认文字/图片编辑模式新增直接边框操作。
+- 选中元素后可拖动边框或标签移动，拖动边缘改宽高，拖动角点等比缩放。
+- 默认图片拖动改为移动图片框；按住 Option/Alt 可调整图片在框内的位置。
+- `Shift` / `Cmd` / `Ctrl` 可在默认编辑模式下多选文字和图片，并使用对齐/统一尺寸工具。
+- 优化重叠元素的选中顺序，让单独的文字或图片更容易点中。
+- 移除顶部 `文字/图片` 与 `位置微调` 的大模式切换，常用版面操作直接融合到选框上。
+- 缩短工具栏状态文案，让紧凑工具栏更容易放下。
+- 修复编辑器 UI 聚焦时 `Ctrl/Cmd+Z` 不触发的问题。
+- 修复刷新后首次拖动图片再撤销，无法回到原位的问题，并覆盖连续拖动不回扯。
+- 选中文字框的可拖动边框或标签时，会显示可移动的手型光标。
 
 ### 0.1.10
 
@@ -140,11 +153,11 @@ It is designed for the final editing pass after an AI has generated an HTML deck
 ## Features
 
 - Text editing: font size, color, bold, alignment, and line height.
-- Image replacement: cover, contain, fill, zoom, and drag.
-- Layout adjustment: move titles, images, cards, and block elements.
-- Move/scale: safe visual scaling with `transform: scale(...)`.
-- Resize: real `width` / `height` edits, including width-only, height-only, and freeform stretch changes.
-- Temporary multi-select: `Shift` / `Cmd` / `Ctrl` click several modules to move, scale, resize, align, or match sizes together.
+- Insert content: add new text blocks and images directly.
+- Image replacement: cover, contain, fill, zoom; default dragging moves the image frame, while Option/Alt drag adjusts image content inside the frame.
+- Border handles: select text or images, then drag the border/label to move and drag edges or corners to resize.
+- Temporary multi-select: `Shift` / `Cmd` / `Ctrl` click several text/image/module boxes to move, align, or match sizes together.
+- Advanced layout adjustment: safe scale, real width/height resizing, and reset tools remain available for complex titles, cards, and block elements.
 - Clean export: removes editor UI and injected runtime scripts.
 
 ## Usage
@@ -203,6 +216,19 @@ Load the extension locally:
 5. Open an HTML deck and click the extension action.
 
 ## Release Notes
+
+### 0.1.13
+
+- Added direct border handles in the default text/image editing mode.
+- Drag a selected border or label to move an element, drag side handles to resize, and drag corner handles to resize proportionally.
+- Default image dragging moves the image frame; hold Option/Alt to adjust the image content inside the frame.
+- Shift / Cmd / Ctrl multi-select now works in the default text/image editing mode and opens alignment / same-size controls.
+- Overlapping text/image boxes are ordered for easier selection of individual elements.
+- Removed the top-level Text/Image vs. Move layout switch because border handles now cover the normal layout workflow.
+- Shortened the toolbar status text to fit in compact toolbars.
+- Fixed Ctrl/Cmd+Z when focus is on editor UI such as image handles or popover controls.
+- Fixed first-drag undo for images whose frame originally had no inline style, and covered sequential image drags so they do not snap back.
+- Added a movable cursor when hovering a selected text box's draggable border or label.
 
 ### 0.1.10
 
