@@ -93,6 +93,20 @@
     return language === "en" ? "en" : DEFAULT_LANG;
   }
 
+  function uniqueDomId(prefix = "hsm-added") {
+    const safePrefix = String(prefix || "hsm-added").replace(/[^a-zA-Z0-9_-]/g, "-");
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const token = window.crypto?.randomUUID?.() ||
+        `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      const id = `${safePrefix}-${token}`;
+      const selector = `[data-hsm-added-id="${window.CSS?.escape ? CSS.escape(id) : id}"]`;
+      if (!document.querySelector(selector)) {
+        return id;
+      }
+    }
+    return `${safePrefix}-${Date.now().toString(36)}`;
+  }
+
   ns.utils = {
     normalizeText,
     isRendered,
@@ -108,6 +122,7 @@
     readFileAsDataUrl,
     toHexColor,
     filenameFromTitle,
-    normalizeLanguage
+    normalizeLanguage,
+    uniqueDomId
   };
 })();

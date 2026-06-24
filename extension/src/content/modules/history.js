@@ -168,6 +168,25 @@ pushHistoryEntries(entries, label) {
       this.trimHistory();
     },
 
+pushCreateHistory(item, record, label) {
+      if (!item?.element || !record) {
+        return;
+      }
+      this.undoStack.push({
+        action: "create",
+        id: item.id,
+        type: item.type,
+        imageMode: item.imageMode,
+        element: item.element,
+        frameElement: item.frameElement,
+        rootElement: this.addedRootForItem?.(item) || item.element,
+        record,
+        label
+      });
+      this.redoStack = [];
+      this.trimHistory();
+    },
+
 trimHistory() {
       if (this.undoStack.length > 80) {
         this.undoStack.splice(0, this.undoStack.length - 80);
@@ -181,6 +200,9 @@ undo() {
         return;
       }
       for (const historyItem of this.historyItemsForEntry(entry)) {
+        if (this.applyCreateHistoryEntry(historyItem, false)) {
+          continue;
+        }
         const item = this.itemFromHistory(historyItem);
         this.restoreState(item, historyItem.before);
         this.updateModifiedFromCurrent(item);
@@ -197,6 +219,9 @@ redo() {
         return;
       }
       for (const historyItem of this.historyItemsForEntry(entry)) {
+        if (this.applyCreateHistoryEntry(historyItem, true)) {
+          continue;
+        }
         const item = this.itemFromHistory(historyItem);
         this.restoreState(item, historyItem.after);
         this.updateModifiedFromCurrent(item);
@@ -208,6 +233,62 @@ redo() {
 
 historyItemsForEntry(entry) {
       return Array.isArray(entry?.items) ? entry.items : [entry];
+    },
+
+applyCreateHistoryEntry(entry, shouldExist) {
+      if (entry?.action !== "create") {
+        return false;
+      }
+      if (shouldExist) {
+        this.restoreCreatedItem(entry);
+      } else {
+        this.removeCreatedItem(entry);
+      }
+      return true;
+    },
+
+removeCreatedItem(entry) {
+      const item = this.itemFromHistory(entry);
+      const root = this.addedRootForItem?.(item) || entry.rootElement || item.element;
+      if (root?.isConnected) {
+        entry.rootElement = root;
+        root.remove();
+      }
+      this.addedItems?.delete(entry.id);
+      this.modified.delete(entry.id);
+      this.originalStates.delete(entry.id);
+      this.imageAdjustments?.delete(entry.id);
+      this.layoutAdjustments?.delete(entry.id);
+      this.items.delete(entry.id);
+      if (this.selectedId === entry.id) {
+        this.selectedId = null;
+      }
+      this.selectedIds?.delete(entry.id);
+    },
+
+restoreCreatedItem(entry) {
+      const record = entry.record || {};
+      const parent = record.parentElement?.isConnected
+        ? record.parentElement
+        : (document.body || document.documentElement);
+      const before = record.insertBeforeElement?.isConnected ? record.insertBeforeElement : null;
+      const root = entry.rootElement || this.addedRootForItem?.(record) || record.element || entry.element;
+      if (!root || !parent) {
+        return;
+      }
+      if (!root.isConnected) {
+        parent.insertBefore(root, before);
+      }
+
+      const element = record.element || entry.element || (entry.type === "image" ? root.querySelector?.("img") : root);
+      entry.element = element;
+      entry.frameElement = entry.type === "image" && root !== element ? root : element;
+      record.element = element;
+      record.parentElement = parent;
+      this.addedItems?.set(entry.id, record);
+      const item = this.itemFromHistory(entry);
+      this.items.set(entry.id, item);
+      this.markAddedItemModified?.(item);
     },
 
 itemFromHistory(entry) {
@@ -243,6 +324,11 @@ markModified(item) {
     },
 
 updateModifiedFromCurrent(item) {
+      if (this.addedItems?.has(item.id)) {
+        this.markAddedItemModified?.(item);
+        this.refreshToolbar();
+        return;
+      }
       const original = this.originalStates.get(item.id);
       if (!original) {
         return;

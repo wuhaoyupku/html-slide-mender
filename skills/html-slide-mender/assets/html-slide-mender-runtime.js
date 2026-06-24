@@ -248,6 +248,8 @@
       appName: "HTML Mender",
       undo: "撤销",
       redo: "重做",
+      addText: "新增文字",
+      addImage: "新增图片",
       rescan: "重新识别",
       boxes: "编辑框",
       boxesOn: "编辑框 开",
@@ -312,6 +314,9 @@
       nothingRedo: "没有可重做的操作。",
       undone: "已撤销。",
       redone: "已重做。",
+      newTextPlaceholder: "双击编辑文字",
+      textAdded: "已新增文字。",
+      imageAdded: "已新增图片。",
       unsupportedImage: "暂不支持这种图片格式。",
       imageReplaced: "图片已替换。",
       imageReset: "图片已重置。",
@@ -331,6 +336,8 @@
       appName: "HTML Mender",
       undo: "Undo",
       redo: "Redo",
+      addText: "Add text",
+      addImage: "Add image",
       rescan: "Rescan",
       boxes: "Boxes",
       boxesOn: "Boxes on",
@@ -395,6 +402,9 @@
       nothingRedo: "Nothing to redo.",
       undone: "Undone.",
       redone: "Redone.",
+      newTextPlaceholder: "Double-click to edit text",
+      textAdded: "Text added.",
+      imageAdded: "Image added.",
       unsupportedImage: "Unsupported image type.",
       imageReplaced: "Image replaced.",
       imageReset: "Image reset.",
@@ -526,6 +536,20 @@
     return language === "en" ? "en" : DEFAULT_LANG;
   }
 
+  function uniqueDomId(prefix = "hsm-added") {
+    const safePrefix = String(prefix || "hsm-added").replace(/[^a-zA-Z0-9_-]/g, "-");
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const token = window.crypto?.randomUUID?.() ||
+        `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      const id = `${safePrefix}-${token}`;
+      const selector = `[data-hsm-added-id="${window.CSS?.escape ? CSS.escape(id) : id}"]`;
+      if (!document.querySelector(selector)) {
+        return id;
+      }
+    }
+    return `${safePrefix}-${Date.now().toString(36)}`;
+  }
+
   ns.utils = {
     normalizeText,
     isRendered,
@@ -541,7 +565,8 @@
     readFileAsDataUrl,
     toHexColor,
     filenameFromTitle,
-    normalizeLanguage
+    normalizeLanguage,
+    uniqueDomId
   };
 })();
 
@@ -1897,6 +1922,12 @@ async handleAction(action) {
           return;
         case "redo":
           this.redo();
+          return;
+        case "add-text":
+          this.addTextBlock?.();
+          return;
+        case "add-image":
+          this.addImageBlock?.();
           return;
         case "download":
           await this.download();
@@ -3468,6 +3499,8 @@ template() {
             <div class="group group-default">
               <button type="button" data-action="undo">${escapeHtml(this.t("undo"))}</button>
               <button type="button" data-action="redo">${escapeHtml(this.t("redo"))}</button>
+              <button type="button" data-action="add-text">${escapeHtml(this.t("addText"))}</button>
+              <button type="button" data-action="add-image">${escapeHtml(this.t("addImage"))}</button>
               <button type="button" data-action="rescan">${escapeHtml(this.t("rescan"))}</button>
               <button type="button" data-action="toggle-boxes" aria-pressed="${this.showBoxes ? "true" : "false"}">${escapeHtml(this.showBoxes ? this.t("boxesOn") : this.t("boxesOff"))}</button>
               <button type="button" data-action="language">${escapeHtml(this.t("language"))}</button>
@@ -3676,8 +3709,9 @@ isTextCandidate(element) {
         return false;
       }
 
+      const isAddedText = element.dataset.hsmAdded === "text";
       const text = normalizeText(element.innerText || element.textContent || "");
-      if (text.length < 2) {
+      if (!isAddedText && text.length < 2) {
         return false;
       }
 
@@ -3692,7 +3726,7 @@ isTextCandidate(element) {
       }
 
       const tag = element.tagName.toLowerCase();
-      if (tag === "div" && !element.hasAttribute("data-editable")) {
+      if (tag === "div" && !element.hasAttribute("data-editable") && !isAddedText) {
         if (element.querySelector(BLOCK_TEXT_SELECTOR)) {
           return false;
         }
@@ -3723,8 +3757,9 @@ isImageCandidate(element) {
         return false;
       }
 
+      const isAddedImage = element.dataset.hsmAdded === "image";
       const rect = element.getBoundingClientRect();
-      if (!isVisibleRect(rect, 24, 24) || !intersectsViewport(rect)) {
+      if (!isVisibleRect(rect, isAddedImage ? 12 : 24, isAddedImage ? 12 : 24) || !intersectsViewport(rect)) {
         return false;
       }
 
@@ -4344,6 +4379,7 @@ openImagePicker() {
       }
 
       this.pendingImageReplaceId = item.id;
+      this.pendingImageAddAnchor = null;
       this.fileInput.value = "";
       try {
         if (typeof this.fileInput.showPicker === "function") {
@@ -4357,10 +4393,12 @@ openImagePicker() {
     },
 
 async handleImageFile() {
-      const item = this.items.get(this.pendingImageReplaceId) || this.selectedItem();
+      const addAnchor = this.pendingImageAddAnchor;
+      const item = addAnchor ? null : (this.items.get(this.pendingImageReplaceId) || this.selectedItem());
       const file = this.fileInput.files?.[0];
+      this.pendingImageAddAnchor = null;
       this.pendingImageReplaceId = null;
-      if (!item || item.type !== "image" || !file) {
+      if ((!addAnchor && (!item || item.type !== "image")) || !file) {
         return;
       }
 
@@ -4371,6 +4409,12 @@ async handleImageFile() {
       }
 
       const dataUrl = await readFileAsDataUrl(file);
+      if (addAnchor) {
+        await this.insertImageBlock?.(dataUrl, addAnchor);
+        this.fileInput.value = "";
+        return;
+      }
+
       this.withMutation(item, () => {
         this.applyImageSource(item, dataUrl);
       }, "Replace image");
@@ -4676,6 +4720,13 @@ lockFrameElement(frame, width, height) {
 
 lockImageContent(item, size) {
       const image = item.element;
+      setImportantStyle(image, "position", "static");
+      setImportantStyle(image, "inset", "auto");
+      setImportantStyle(image, "left", "auto");
+      setImportantStyle(image, "top", "auto");
+      setImportantStyle(image, "right", "auto");
+      setImportantStyle(image, "bottom", "auto");
+      setImportantStyle(image, "margin", "0");
       setImportantStyle(image, "display", "block");
       setImportantStyle(image, "width", "100%");
       setImportantStyle(image, "height", "100%");
@@ -4773,6 +4824,11 @@ resetSelectedImage() {
         return;
       }
 
+      if (this.addedItems?.has(item.id)) {
+        this.resetAddedImage(item);
+        return;
+      }
+
       const original = this.originalStates.get(item.id);
       if (!original) {
         return;
@@ -4784,6 +4840,299 @@ resetSelectedImage() {
       }, "Reset image");
       this.modified.delete(item.id);
       this.toast(this.t("imageReset"));
+    },
+
+resetAddedImage(item) {
+      const record = this.addedItems?.get(item.id);
+      const original = record?.initialState;
+      if (!record || !original) {
+        return;
+      }
+
+      const root = this.addedRootForItem?.(item);
+      const image = item.element;
+      if (root && root !== image && root.matches?.("[data-hsm-image-frame]")) {
+        root.parentElement?.insertBefore(image, root);
+        root.remove();
+        item.frameElement = image;
+      }
+
+      this.withMutation(item, () => {
+        this.restoreState(item, original);
+        item.frameElement = image;
+        record.element = image;
+        record.parentElement = image.parentElement || record.parentElement;
+        this.imageAdjustments.delete(item.id);
+        this.layoutAdjustments?.delete(item.id);
+      }, "Reset inserted image");
+
+      this.addedItems.set(item.id, record);
+      this.markAddedItemModified?.(item);
+      this.scan();
+      this.selectItem(item.id);
+      this.toast(this.t("imageReset"));
+    }
+  };
+})();
+
+
+
+/* ===== src/content/modules/insert.js ===== */
+(() => {
+  const ns = window.HtmlSlideMenderExtension = window.HtmlSlideMenderExtension || {};
+  ns.mixins = ns.mixins || {};
+  const { uniqueDomId, clamp, round, escapeAttr } = ns.utils;
+  const { selectElementContents } = ns.selection;
+
+  ns.mixins.insert = {
+addTextBlock() {
+      if (!this.active) {
+        return;
+      }
+
+      this.commitActiveText?.();
+      this.setEditorMode?.("content");
+      const parent = this.addedElementParent();
+      const element = this.createAddedTextElement();
+      parent.appendChild(element);
+
+      const item = this.itemForAddedElement(element, "text");
+      this.registerAddedItem(item, { parentElement: parent });
+      this.pushCreateHistory?.(item, this.addedItems.get(item.id), "Add text");
+      this.scan();
+      const current = this.items.get(item.id) || item;
+      this.selectItem(current.id);
+      this.toast?.(this.t("textAdded"));
+
+      requestAnimationFrame(() => {
+        const editable = this.items.get(current.id) || current;
+        this.enterTextEdit?.(editable);
+        requestAnimationFrame(() => {
+          selectElementContents(editable.element);
+          this.saveCurrentSelection?.();
+        });
+      });
+    },
+
+addImageBlock() {
+      if (!this.active || !this.fileInput) {
+        return;
+      }
+
+      this.commitActiveText?.();
+      this.setEditorMode?.("content");
+      this.pendingImageReplaceId = null;
+      this.pendingImageAddAnchor = {
+        parentElement: this.addedElementParent()
+      };
+      this.fileInput.value = "";
+      try {
+        if (typeof this.fileInput.showPicker === "function") {
+          this.fileInput.showPicker();
+          return;
+        }
+      } catch (_error) {
+        // Some extension contexts expose showPicker but reject it at runtime.
+      }
+      this.fileInput.click();
+    },
+
+async insertImageBlock(dataUrl, anchor = {}) {
+      const parent = anchor.parentElement?.isConnected ? anchor.parentElement : this.addedElementParent();
+      const dimensions = await this.readInsertedImageDimensions(dataUrl);
+      const element = this.createAddedImageElement(dataUrl, dimensions);
+      parent.appendChild(element);
+
+      const item = this.itemForAddedElement(element, "image");
+      this.registerAddedItem(item, { parentElement: parent });
+      this.pushCreateHistory?.(item, this.addedItems.get(item.id), "Add image");
+      this.scan();
+      const current = this.items.get(item.id) || item;
+      this.selectItem(current.id);
+      this.toast?.(this.t("imageAdded"));
+      return current;
+    },
+
+addedElementParent() {
+      return document.body || document.documentElement;
+    },
+
+createAddedTextElement() {
+      const rect = this.defaultAddedElementRect("text");
+      const element = document.createElement("div");
+      element.dataset.hsmAdded = "text";
+      element.dataset.hsmAddedId = uniqueDomId("hsm-text");
+      element.setAttribute("data-editable", "true");
+      element.setAttribute("data-layout-editable", "true");
+      element.innerHTML = escapeAttr(this.t("newTextPlaceholder"));
+      element.style.cssText = [
+        "position:absolute",
+        `left:${rect.left}px`,
+        `top:${rect.top}px`,
+        `width:${rect.width}px`,
+        "min-height:48px",
+        "z-index:2147483000",
+        "box-sizing:border-box",
+        "padding:4px 6px",
+        "color:#111827",
+        "font-family:Inter, Arial, sans-serif",
+        "font-size:32px",
+        "font-weight:700",
+        "line-height:1.18",
+        "letter-spacing:0",
+        "text-align:left",
+        "overflow:visible"
+      ].join(";");
+      return element;
+    },
+
+createAddedImageElement(dataUrl, dimensions = null) {
+      const rect = this.defaultAddedElementRect("image", { dimensions });
+      const image = document.createElement("img");
+      image.dataset.hsmAdded = "image";
+      image.dataset.hsmAddedId = uniqueDomId("hsm-image");
+      image.setAttribute("data-layout-editable", "true");
+      image.alt = "";
+      image.src = dataUrl;
+      image.style.cssText = [
+        "position:absolute",
+        `left:${rect.left}px`,
+        `top:${rect.top}px`,
+        `width:${rect.width}px`,
+        `height:${rect.height}px`,
+        "z-index:2147483000",
+        "display:block",
+        "box-sizing:border-box",
+        "object-fit:cover",
+        "object-position:center center"
+      ].join(";");
+      return image;
+    },
+
+readInsertedImageDimensions(dataUrl) {
+      return new Promise((resolve) => {
+        if (!dataUrl) {
+          resolve(null);
+          return;
+        }
+
+        const image = new Image();
+        let settled = false;
+        const finish = (dimensions) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          window.clearTimeout(timeoutId);
+          image.onload = null;
+          image.onerror = null;
+          resolve(dimensions);
+        };
+        const timeoutId = window.setTimeout(() => finish(null), 3000);
+        image.onload = () => {
+          const width = image.naturalWidth || image.width;
+          const height = image.naturalHeight || image.height;
+          finish(width > 0 && height > 0 ? { width, height } : null);
+        };
+        image.onerror = () => finish(null);
+        image.src = dataUrl;
+      });
+    },
+
+defaultAddedElementRect(kind, options = {}) {
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1024;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 768;
+      let width;
+      let height;
+      if (kind === "image") {
+        const dimensions = options.dimensions || {};
+        const rawRatio = Number(dimensions.width) / Number(dimensions.height);
+        const ratio = Number.isFinite(rawRatio) && rawRatio > 0 ? clamp(rawRatio, 0.12, 8) : (16 / 9);
+        const maxWidth = Math.max(48, viewportWidth - 48);
+        const maxHeight = Math.max(48, viewportHeight - 120);
+        width = clamp(Math.round(viewportWidth * 0.28), 180, Math.min(420, maxWidth));
+        height = width / ratio;
+        if (height > maxHeight) {
+          height = maxHeight;
+          width = height * ratio;
+        }
+        if (width > maxWidth) {
+          width = maxWidth;
+          height = width / ratio;
+        }
+        if (width < 48 && 48 / ratio <= maxHeight) {
+          width = 48;
+          height = width / ratio;
+        }
+        if (height < 48 && 48 * ratio <= maxWidth) {
+          height = 48;
+          width = height * ratio;
+        }
+      } else {
+        width = clamp(Math.round(viewportWidth * 0.34), 240, 520);
+        height = 64;
+      }
+      const left = Math.round(window.scrollX + clamp((viewportWidth - width) / 2, 24, Math.max(24, viewportWidth - width - 24)));
+      const top = Math.round(window.scrollY + clamp(viewportHeight * 0.44 - height / 2, 84, Math.max(84, viewportHeight - height - 84)));
+      return {
+        left: round(left),
+        top: round(top),
+        width: round(width),
+        height: round(height)
+      };
+    },
+
+itemForAddedElement(element, type) {
+      return {
+        id: this.idFor(element, type),
+        type,
+        imageMode: type === "image" ? "img" : undefined,
+        element,
+        frameElement: element,
+        positioned: true,
+        added: true
+      };
+    },
+
+registerAddedItem(item, options = {}) {
+      if (!item?.element) {
+        return;
+      }
+      const record = {
+        id: item.id,
+        type: item.type,
+        imageMode: item.imageMode,
+        element: item.element,
+        parentElement: options.parentElement || item.element.parentElement,
+        insertBeforeElement: options.insertBeforeElement || null,
+        initialState: this.captureState?.(item) || null
+      };
+      this.addedItems.set(item.id, record);
+      this.markAddedItemModified(item);
+    },
+
+markAddedItemModified(item) {
+      if (!item?.id) {
+        return;
+      }
+      const existing = this.modified.get(item.id) || {};
+      this.modified.set(item.id, {
+        type: item.type,
+        imageMode: item.imageMode,
+        content: true,
+        layout: existing.layout || false
+      });
+    },
+
+addedRootForItem(itemOrRecord) {
+      const element = itemOrRecord?.element;
+      if (!element) {
+        return null;
+      }
+      const frame = element.parentElement?.matches?.("[data-hsm-image-frame]")
+        ? element.parentElement
+        : null;
+      return frame || element;
     }
   };
 })();
@@ -4814,6 +5163,11 @@ resetSelectedImage() {
     baseTransform: "--hsm-layout-base-transform",
     baseWidth: "--hsm-layout-base-width",
     baseHeight: "--hsm-layout-base-height"
+  };
+  const IMAGE_FRAME_SELECTOR = "[data-hsm-image-frame]";
+  const IMAGE_FRAME_CUSTOM_PROPS = {
+    width: "--hsm-frame-width",
+    height: "--hsm-frame-height"
   };
   const EMPTY_LAYOUT_STYLE_VALUE = "__hsm_empty__";
 
@@ -4856,6 +5210,11 @@ resetSelectedImage() {
 
   function finiteLayoutNumber(value) {
     return Number.isFinite(value) ? value : null;
+  }
+
+  function pixelStyleNumber(element, property, fallback) {
+    const value = Number.parseFloat(element?.style?.[property]);
+    return Number.isFinite(value) ? value : fallback;
   }
 
   function hasVisiblePaint(style) {
@@ -5509,6 +5868,31 @@ applyLayoutSizeAdjustment(item, adjustment) {
         target.style.height = `${adjustment.height}px`;
         target.style.setProperty(LAYOUT_CUSTOM_PROPS.height, String(adjustment.height));
       }
+      this.syncImageFrameLayoutSize(target, adjustment);
+    },
+
+syncImageFrameLayoutSize(target, adjustment = {}) {
+      if (!target?.matches?.(IMAGE_FRAME_SELECTOR)) {
+        return;
+      }
+
+      const image = target.querySelector?.("img");
+      const writeDimension = (dimension, value) => {
+        if (!Number.isFinite(value)) {
+          return;
+        }
+        const rounded = round(clamp(value, 8, 8000));
+        const px = `${rounded}px`;
+        const customProp = IMAGE_FRAME_CUSTOM_PROPS[dimension];
+        target.style.setProperty(dimension, px, "important");
+        target.style.setProperty(`min-${dimension}`, px, "important");
+        target.style.setProperty(`max-${dimension}`, px, "important");
+        target.style.setProperty(customProp, String(rounded));
+        image?.style?.setProperty(customProp, String(rounded));
+      };
+
+      writeDimension("width", adjustment.width);
+      writeDimension("height", adjustment.height);
     },
 
 handleLayoutResizeMove(event) {
@@ -5807,6 +6191,13 @@ clearLayoutAdjustment(item) {
         return;
       }
       restoreAttr(target, "style", this.styleWithoutLayoutAdjustment(target, adjustment));
+      if (target.matches?.(IMAGE_FRAME_SELECTOR)) {
+        const rect = target.getBoundingClientRect();
+        this.syncImageFrameLayoutSize(target, {
+          width: pixelStyleNumber(target, "width", rect.width),
+          height: pixelStyleNumber(target, "height", rect.height)
+        });
+      }
       this.layoutAdjustments.delete(item.id);
     },
 
@@ -6116,6 +6507,25 @@ pushHistoryEntries(entries, label) {
       this.trimHistory();
     },
 
+pushCreateHistory(item, record, label) {
+      if (!item?.element || !record) {
+        return;
+      }
+      this.undoStack.push({
+        action: "create",
+        id: item.id,
+        type: item.type,
+        imageMode: item.imageMode,
+        element: item.element,
+        frameElement: item.frameElement,
+        rootElement: this.addedRootForItem?.(item) || item.element,
+        record,
+        label
+      });
+      this.redoStack = [];
+      this.trimHistory();
+    },
+
 trimHistory() {
       if (this.undoStack.length > 80) {
         this.undoStack.splice(0, this.undoStack.length - 80);
@@ -6129,6 +6539,9 @@ undo() {
         return;
       }
       for (const historyItem of this.historyItemsForEntry(entry)) {
+        if (this.applyCreateHistoryEntry(historyItem, false)) {
+          continue;
+        }
         const item = this.itemFromHistory(historyItem);
         this.restoreState(item, historyItem.before);
         this.updateModifiedFromCurrent(item);
@@ -6145,6 +6558,9 @@ redo() {
         return;
       }
       for (const historyItem of this.historyItemsForEntry(entry)) {
+        if (this.applyCreateHistoryEntry(historyItem, true)) {
+          continue;
+        }
         const item = this.itemFromHistory(historyItem);
         this.restoreState(item, historyItem.after);
         this.updateModifiedFromCurrent(item);
@@ -6156,6 +6572,62 @@ redo() {
 
 historyItemsForEntry(entry) {
       return Array.isArray(entry?.items) ? entry.items : [entry];
+    },
+
+applyCreateHistoryEntry(entry, shouldExist) {
+      if (entry?.action !== "create") {
+        return false;
+      }
+      if (shouldExist) {
+        this.restoreCreatedItem(entry);
+      } else {
+        this.removeCreatedItem(entry);
+      }
+      return true;
+    },
+
+removeCreatedItem(entry) {
+      const item = this.itemFromHistory(entry);
+      const root = this.addedRootForItem?.(item) || entry.rootElement || item.element;
+      if (root?.isConnected) {
+        entry.rootElement = root;
+        root.remove();
+      }
+      this.addedItems?.delete(entry.id);
+      this.modified.delete(entry.id);
+      this.originalStates.delete(entry.id);
+      this.imageAdjustments?.delete(entry.id);
+      this.layoutAdjustments?.delete(entry.id);
+      this.items.delete(entry.id);
+      if (this.selectedId === entry.id) {
+        this.selectedId = null;
+      }
+      this.selectedIds?.delete(entry.id);
+    },
+
+restoreCreatedItem(entry) {
+      const record = entry.record || {};
+      const parent = record.parentElement?.isConnected
+        ? record.parentElement
+        : (document.body || document.documentElement);
+      const before = record.insertBeforeElement?.isConnected ? record.insertBeforeElement : null;
+      const root = entry.rootElement || this.addedRootForItem?.(record) || record.element || entry.element;
+      if (!root || !parent) {
+        return;
+      }
+      if (!root.isConnected) {
+        parent.insertBefore(root, before);
+      }
+
+      const element = record.element || entry.element || (entry.type === "image" ? root.querySelector?.("img") : root);
+      entry.element = element;
+      entry.frameElement = entry.type === "image" && root !== element ? root : element;
+      record.element = element;
+      record.parentElement = parent;
+      this.addedItems?.set(entry.id, record);
+      const item = this.itemFromHistory(entry);
+      this.items.set(entry.id, item);
+      this.markAddedItemModified?.(item);
     },
 
 itemFromHistory(entry) {
@@ -6191,6 +6663,11 @@ markModified(item) {
     },
 
 updateModifiedFromCurrent(item) {
+      if (this.addedItems?.has(item.id)) {
+        this.markAddedItemModified?.(item);
+        this.refreshToolbar();
+        return;
+      }
       const original = this.originalStates.get(item.id);
       if (!original) {
         return;
@@ -6358,7 +6835,7 @@ serializeSourceBasedHtml(sourceHtml) {
     },
 
 createSourceExportPatches(sourceDocument) {
-      const patches = [];
+      const patches = this.createInsertedElementPatches(sourceDocument);
       for (const element of this.exportTextElements()) {
         const patch = this.createSourceExportPatch(element, "text", sourceDocument);
         if (patch) {
@@ -6390,7 +6867,80 @@ createSourceExportPatches(sourceDocument) {
       return patches;
     },
 
+createInsertedElementPatches(sourceDocument) {
+      const patches = [];
+      for (const record of this.addedItems?.values?.() || []) {
+        const patch = this.createInsertedElementPatch(record, sourceDocument);
+        if (patch) {
+          patches.push(patch);
+        }
+      }
+      return patches;
+    },
+
+createInsertedElementPatch(record, sourceDocument) {
+      const element = record?.element;
+      if (!element?.isConnected) {
+        return null;
+      }
+
+      const root = this.addedRootForItem?.(record) || element;
+      if (!root?.isConnected) {
+        return null;
+      }
+
+      const parentElement = root.parentElement || record.parentElement || document.body;
+      const sourceParent = this.resolveSourceElementForLiveElement(parentElement, sourceDocument) ||
+        sourceDocument.body ||
+        sourceDocument.documentElement;
+      const parentSourcePath = this.sourcePathForElement(sourceParent);
+      const html = this.serializeInsertedElementHtml(root);
+      if (!parentSourcePath.length || !html) {
+        return null;
+      }
+
+      return {
+        kind: record.type === "image" ? "insert-image" : "insert-text",
+        parentSourcePath,
+        html
+      };
+    },
+
+resolveSourceElementForLiveElement(element, sourceDocument) {
+      if (!element || !sourceDocument) {
+        return null;
+      }
+      const selector = this.selectorForDraftElement?.(element) || this.selectorForExportElement(element);
+      if (!selector) {
+        return null;
+      }
+      const sourceElement = sourceDocument.querySelector(selector);
+      return sourceElement?.tagName === element.tagName ? sourceElement : null;
+    },
+
+serializeInsertedElementHtml(element) {
+      const clone = element.cloneNode(true);
+      this.sanitizeInsertedElementClone(clone);
+      return clone.outerHTML || "";
+    },
+
+sanitizeInsertedElementClone(root) {
+      const elements = [root, ...Array.from(root.querySelectorAll?.("*") || [])]
+        .filter((element) => element?.nodeType === Node.ELEMENT_NODE);
+      for (const element of elements) {
+        element.removeAttribute("data-hsm-added");
+        element.removeAttribute("data-hsm-added-id");
+        element.removeAttribute("data-hsm-image-frame");
+        element.removeAttribute("contenteditable");
+        element.removeAttribute("spellcheck");
+      }
+    },
+
 createSourceExportPatch(element, kind, sourceDocument) {
+      if (this.isAddedElementForExport(element)) {
+        return null;
+      }
+
       const selector = this.selectorForDraftElement?.(element) || this.selectorForExportElement(element);
       if (!selector) {
         return null;
@@ -6504,6 +7054,19 @@ serializeSourceStringWithPatches(sourceHtml, patches) {
 
       const edits = [];
       for (const patch of patches) {
+        if (patch.kind === "insert-text" || patch.kind === "insert-image") {
+          const parentNode = this.findSourceNodeByPath(tree, patch.parentSourcePath);
+          if (!parentNode || parentNode.endTagStart == null) {
+            return "";
+          }
+          edits.push({
+            start: parentNode.endTagStart,
+            end: parentNode.endTagStart,
+            text: `\n${patch.html}`
+          });
+          continue;
+        }
+
         const node = this.findSourceNodeByPath(tree, patch.sourcePath);
         if (!node) {
           return "";
@@ -6573,8 +7136,9 @@ applySourceStringEdits(sourceHtml, edits) {
       let result = sourceHtml;
       let nextStart = sourceHtml.length + 1;
       const ordered = edits
+        .map((edit, order) => edit ? ({ ...edit, order }) : edit)
         .filter((edit) => edit && edit.start <= edit.end && edit.start >= 0 && edit.end <= sourceHtml.length)
-        .sort((a, b) => b.start - a.start);
+        .sort((a, b) => (b.start - a.start) || (b.order - a.order));
 
       if (ordered.length !== edits.length) {
         return "";
@@ -6788,6 +7352,21 @@ findSourceNodeByPath(tree, path = []) {
       return node;
     },
 
+sourceDomElementByPath(sourceDocument, path = []) {
+      let current = sourceDocument;
+      for (const segment of path) {
+        const children = current.nodeType === Node.DOCUMENT_NODE
+          ? [current.documentElement].filter(Boolean)
+          : Array.from(current.children || []);
+        const matches = children.filter((child) => child.tagName?.toLowerCase() === segment.tag);
+        current = matches[(segment.index || 1) - 1];
+        if (!current) {
+          return null;
+        }
+      }
+      return current?.nodeType === Node.ELEMENT_NODE ? current : null;
+    },
+
 findSourceTagEnd(source, start) {
       let quote = "";
       for (let index = start + 1; index < source.length; index += 1) {
@@ -6831,6 +7410,14 @@ isRawTextSourceTag(tag) {
     },
 
 applySourceExportPatch(sourceDocument, patch) {
+      if (patch.kind === "insert-text" || patch.kind === "insert-image") {
+        const parent = this.sourceDomElementByPath(sourceDocument, patch.parentSourcePath) ||
+          sourceDocument.body ||
+          sourceDocument.documentElement;
+        parent?.insertAdjacentHTML?.("beforeend", patch.html || "");
+        return;
+      }
+
       const element = sourceDocument.querySelector(patch.selector);
       if (!element) {
         return;
@@ -6884,15 +7471,16 @@ isExportTextElement(element) {
       if (!this.isExportPageElement(element) || element.matches(EXCLUDED_SELECTOR)) {
         return false;
       }
+      const isAddedText = element.dataset.hsmAdded === "text";
       const text = normalizeText(element.innerText || element.textContent || "");
-      if (text.length < 2) {
+      if (!isAddedText && text.length < 2) {
         return false;
       }
       const tag = element.tagName.toLowerCase();
       if (!element.matches(BLOCK_TEXT_SELECTOR) && element.querySelector(BLOCK_TEXT_SELECTOR)) {
         return false;
       }
-      if (tag === "div" && !element.hasAttribute("data-editable")) {
+      if (tag === "div" && !element.hasAttribute("data-editable") && !isAddedText) {
         if (element.querySelector(BLOCK_TEXT_SELECTOR)) {
           return false;
         }
@@ -6933,6 +7521,25 @@ isExportPageElement(element) {
         return false;
       }
       return element.ownerDocument === document;
+    },
+
+isAddedElementForExport(element) {
+      if (!element?.matches) {
+        return false;
+      }
+      return Boolean(
+        element.matches("[data-hsm-added]") ||
+        element.closest("[data-hsm-added]") ||
+        element.matches("[data-hsm-image-frame]") && element.querySelector("[data-hsm-added]")
+      );
+    },
+
+sanitizeSerializedClone(clone) {
+      for (const element of clone.querySelectorAll("[data-hsm-added], [data-hsm-added-id], [data-hsm-image-frame]")) {
+        element.removeAttribute("data-hsm-added");
+        element.removeAttribute("data-hsm-added-id");
+        element.removeAttribute("data-hsm-image-frame");
+      }
     },
 
 isExportElementModified(element, kind) {
@@ -7184,6 +7791,8 @@ escapeDraftCss(value) {
       this.imageAdjustments = new Map();
       this.layoutAdjustments = new Map();
       this.pendingImageReplaceId = null;
+      this.pendingImageAddAnchor = null;
+      this.addedItems = new Map();
       this.originalStates = new Map();
       this.modified = new Map();
       this.undoStack = [];
@@ -7207,6 +7816,7 @@ escapeDraftCss(value) {
     ns.mixins.scanner,
     ns.mixins.text,
     ns.mixins.image,
+    ns.mixins.insert,
     ns.mixins.layout,
     ns.mixins.history,
     ns.mixins.exporter,

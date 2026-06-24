@@ -22,6 +22,11 @@
     baseWidth: "--hsm-layout-base-width",
     baseHeight: "--hsm-layout-base-height"
   };
+  const IMAGE_FRAME_SELECTOR = "[data-hsm-image-frame]";
+  const IMAGE_FRAME_CUSTOM_PROPS = {
+    width: "--hsm-frame-width",
+    height: "--hsm-frame-height"
+  };
   const EMPTY_LAYOUT_STYLE_VALUE = "__hsm_empty__";
 
   const LAYOUT_TAG_SELECTOR = [
@@ -63,6 +68,11 @@
 
   function finiteLayoutNumber(value) {
     return Number.isFinite(value) ? value : null;
+  }
+
+  function pixelStyleNumber(element, property, fallback) {
+    const value = Number.parseFloat(element?.style?.[property]);
+    return Number.isFinite(value) ? value : fallback;
   }
 
   function hasVisiblePaint(style) {
@@ -716,6 +726,31 @@ applyLayoutSizeAdjustment(item, adjustment) {
         target.style.height = `${adjustment.height}px`;
         target.style.setProperty(LAYOUT_CUSTOM_PROPS.height, String(adjustment.height));
       }
+      this.syncImageFrameLayoutSize(target, adjustment);
+    },
+
+syncImageFrameLayoutSize(target, adjustment = {}) {
+      if (!target?.matches?.(IMAGE_FRAME_SELECTOR)) {
+        return;
+      }
+
+      const image = target.querySelector?.("img");
+      const writeDimension = (dimension, value) => {
+        if (!Number.isFinite(value)) {
+          return;
+        }
+        const rounded = round(clamp(value, 8, 8000));
+        const px = `${rounded}px`;
+        const customProp = IMAGE_FRAME_CUSTOM_PROPS[dimension];
+        target.style.setProperty(dimension, px, "important");
+        target.style.setProperty(`min-${dimension}`, px, "important");
+        target.style.setProperty(`max-${dimension}`, px, "important");
+        target.style.setProperty(customProp, String(rounded));
+        image?.style?.setProperty(customProp, String(rounded));
+      };
+
+      writeDimension("width", adjustment.width);
+      writeDimension("height", adjustment.height);
     },
 
 handleLayoutResizeMove(event) {
@@ -1014,6 +1049,13 @@ clearLayoutAdjustment(item) {
         return;
       }
       restoreAttr(target, "style", this.styleWithoutLayoutAdjustment(target, adjustment));
+      if (target.matches?.(IMAGE_FRAME_SELECTOR)) {
+        const rect = target.getBoundingClientRect();
+        this.syncImageFrameLayoutSize(target, {
+          width: pixelStyleNumber(target, "width", rect.width),
+          height: pixelStyleNumber(target, "height", rect.height)
+        });
+      }
       this.layoutAdjustments.delete(item.id);
     },
 

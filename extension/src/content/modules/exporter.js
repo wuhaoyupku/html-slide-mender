@@ -131,7 +131,7 @@ serializeSourceBasedHtml(sourceHtml) {
     },
 
 createSourceExportPatches(sourceDocument) {
-      const patches = [];
+      const patches = this.createInsertedElementPatches(sourceDocument);
       for (const element of this.exportTextElements()) {
         const patch = this.createSourceExportPatch(element, "text", sourceDocument);
         if (patch) {
@@ -163,7 +163,80 @@ createSourceExportPatches(sourceDocument) {
       return patches;
     },
 
+createInsertedElementPatches(sourceDocument) {
+      const patches = [];
+      for (const record of this.addedItems?.values?.() || []) {
+        const patch = this.createInsertedElementPatch(record, sourceDocument);
+        if (patch) {
+          patches.push(patch);
+        }
+      }
+      return patches;
+    },
+
+createInsertedElementPatch(record, sourceDocument) {
+      const element = record?.element;
+      if (!element?.isConnected) {
+        return null;
+      }
+
+      const root = this.addedRootForItem?.(record) || element;
+      if (!root?.isConnected) {
+        return null;
+      }
+
+      const parentElement = root.parentElement || record.parentElement || document.body;
+      const sourceParent = this.resolveSourceElementForLiveElement(parentElement, sourceDocument) ||
+        sourceDocument.body ||
+        sourceDocument.documentElement;
+      const parentSourcePath = this.sourcePathForElement(sourceParent);
+      const html = this.serializeInsertedElementHtml(root);
+      if (!parentSourcePath.length || !html) {
+        return null;
+      }
+
+      return {
+        kind: record.type === "image" ? "insert-image" : "insert-text",
+        parentSourcePath,
+        html
+      };
+    },
+
+resolveSourceElementForLiveElement(element, sourceDocument) {
+      if (!element || !sourceDocument) {
+        return null;
+      }
+      const selector = this.selectorForDraftElement?.(element) || this.selectorForExportElement(element);
+      if (!selector) {
+        return null;
+      }
+      const sourceElement = sourceDocument.querySelector(selector);
+      return sourceElement?.tagName === element.tagName ? sourceElement : null;
+    },
+
+serializeInsertedElementHtml(element) {
+      const clone = element.cloneNode(true);
+      this.sanitizeInsertedElementClone(clone);
+      return clone.outerHTML || "";
+    },
+
+sanitizeInsertedElementClone(root) {
+      const elements = [root, ...Array.from(root.querySelectorAll?.("*") || [])]
+        .filter((element) => element?.nodeType === Node.ELEMENT_NODE);
+      for (const element of elements) {
+        element.removeAttribute("data-hsm-added");
+        element.removeAttribute("data-hsm-added-id");
+        element.removeAttribute("data-hsm-image-frame");
+        element.removeAttribute("contenteditable");
+        element.removeAttribute("spellcheck");
+      }
+    },
+
 createSourceExportPatch(element, kind, sourceDocument) {
+      if (this.isAddedElementForExport(element)) {
+        return null;
+      }
+
       const selector = this.selectorForDraftElement?.(element) || this.selectorForExportElement(element);
       if (!selector) {
         return null;
@@ -277,6 +350,19 @@ serializeSourceStringWithPatches(sourceHtml, patches) {
 
       const edits = [];
       for (const patch of patches) {
+        if (patch.kind === "insert-text" || patch.kind === "insert-image") {
+          const parentNode = this.findSourceNodeByPath(tree, patch.parentSourcePath);
+          if (!parentNode || parentNode.endTagStart == null) {
+            return "";
+          }
+          edits.push({
+            start: parentNode.endTagStart,
+            end: parentNode.endTagStart,
+            text: `\n${patch.html}`
+          });
+          continue;
+        }
+
         const node = this.findSourceNodeByPath(tree, patch.sourcePath);
         if (!node) {
           return "";
@@ -346,8 +432,9 @@ applySourceStringEdits(sourceHtml, edits) {
       let result = sourceHtml;
       let nextStart = sourceHtml.length + 1;
       const ordered = edits
+        .map((edit, order) => edit ? ({ ...edit, order }) : edit)
         .filter((edit) => edit && edit.start <= edit.end && edit.start >= 0 && edit.end <= sourceHtml.length)
-        .sort((a, b) => b.start - a.start);
+        .sort((a, b) => (b.start - a.start) || (b.order - a.order));
 
       if (ordered.length !== edits.length) {
         return "";
@@ -561,6 +648,21 @@ findSourceNodeByPath(tree, path = []) {
       return node;
     },
 
+sourceDomElementByPath(sourceDocument, path = []) {
+      let current = sourceDocument;
+      for (const segment of path) {
+        const children = current.nodeType === Node.DOCUMENT_NODE
+          ? [current.documentElement].filter(Boolean)
+          : Array.from(current.children || []);
+        const matches = children.filter((child) => child.tagName?.toLowerCase() === segment.tag);
+        current = matches[(segment.index || 1) - 1];
+        if (!current) {
+          return null;
+        }
+      }
+      return current?.nodeType === Node.ELEMENT_NODE ? current : null;
+    },
+
 findSourceTagEnd(source, start) {
       let quote = "";
       for (let index = start + 1; index < source.length; index += 1) {
@@ -604,6 +706,14 @@ isRawTextSourceTag(tag) {
     },
 
 applySourceExportPatch(sourceDocument, patch) {
+      if (patch.kind === "insert-text" || patch.kind === "insert-image") {
+        const parent = this.sourceDomElementByPath(sourceDocument, patch.parentSourcePath) ||
+          sourceDocument.body ||
+          sourceDocument.documentElement;
+        parent?.insertAdjacentHTML?.("beforeend", patch.html || "");
+        return;
+      }
+
       const element = sourceDocument.querySelector(patch.selector);
       if (!element) {
         return;
@@ -657,15 +767,16 @@ isExportTextElement(element) {
       if (!this.isExportPageElement(element) || element.matches(EXCLUDED_SELECTOR)) {
         return false;
       }
+      const isAddedText = element.dataset.hsmAdded === "text";
       const text = normalizeText(element.innerText || element.textContent || "");
-      if (text.length < 2) {
+      if (!isAddedText && text.length < 2) {
         return false;
       }
       const tag = element.tagName.toLowerCase();
       if (!element.matches(BLOCK_TEXT_SELECTOR) && element.querySelector(BLOCK_TEXT_SELECTOR)) {
         return false;
       }
-      if (tag === "div" && !element.hasAttribute("data-editable")) {
+      if (tag === "div" && !element.hasAttribute("data-editable") && !isAddedText) {
         if (element.querySelector(BLOCK_TEXT_SELECTOR)) {
           return false;
         }
@@ -706,6 +817,25 @@ isExportPageElement(element) {
         return false;
       }
       return element.ownerDocument === document;
+    },
+
+isAddedElementForExport(element) {
+      if (!element?.matches) {
+        return false;
+      }
+      return Boolean(
+        element.matches("[data-hsm-added]") ||
+        element.closest("[data-hsm-added]") ||
+        element.matches("[data-hsm-image-frame]") && element.querySelector("[data-hsm-added]")
+      );
+    },
+
+sanitizeSerializedClone(clone) {
+      for (const element of clone.querySelectorAll("[data-hsm-added], [data-hsm-added-id], [data-hsm-image-frame]")) {
+        element.removeAttribute("data-hsm-added");
+        element.removeAttribute("data-hsm-added-id");
+        element.removeAttribute("data-hsm-image-frame");
+      }
     },
 
 isExportElementModified(element, kind) {

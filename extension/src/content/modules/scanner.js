@@ -115,8 +115,9 @@ isTextCandidate(element) {
         return false;
       }
 
+      const isAddedText = element.dataset.hsmAdded === "text";
       const text = normalizeText(element.innerText || element.textContent || "");
-      if (text.length < 2) {
+      if (!isAddedText && text.length < 2) {
         return false;
       }
 
@@ -131,7 +132,7 @@ isTextCandidate(element) {
       }
 
       const tag = element.tagName.toLowerCase();
-      if (tag === "div" && !element.hasAttribute("data-editable")) {
+      if (tag === "div" && !element.hasAttribute("data-editable") && !isAddedText) {
         if (element.querySelector(BLOCK_TEXT_SELECTOR)) {
           return false;
         }
@@ -162,8 +163,9 @@ isImageCandidate(element) {
         return false;
       }
 
+      const isAddedImage = element.dataset.hsmAdded === "image";
       const rect = element.getBoundingClientRect();
-      if (!isVisibleRect(rect, 24, 24) || !intersectsViewport(rect)) {
+      if (!isVisibleRect(rect, isAddedImage ? 12 : 24, isAddedImage ? 12 : 24) || !intersectsViewport(rect)) {
         return false;
       }
 

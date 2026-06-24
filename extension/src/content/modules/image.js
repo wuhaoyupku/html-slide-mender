@@ -69,6 +69,7 @@ openImagePicker() {
       }
 
       this.pendingImageReplaceId = item.id;
+      this.pendingImageAddAnchor = null;
       this.fileInput.value = "";
       try {
         if (typeof this.fileInput.showPicker === "function") {
@@ -82,10 +83,12 @@ openImagePicker() {
     },
 
 async handleImageFile() {
-      const item = this.items.get(this.pendingImageReplaceId) || this.selectedItem();
+      const addAnchor = this.pendingImageAddAnchor;
+      const item = addAnchor ? null : (this.items.get(this.pendingImageReplaceId) || this.selectedItem());
       const file = this.fileInput.files?.[0];
+      this.pendingImageAddAnchor = null;
       this.pendingImageReplaceId = null;
-      if (!item || item.type !== "image" || !file) {
+      if ((!addAnchor && (!item || item.type !== "image")) || !file) {
         return;
       }
 
@@ -96,6 +99,12 @@ async handleImageFile() {
       }
 
       const dataUrl = await readFileAsDataUrl(file);
+      if (addAnchor) {
+        await this.insertImageBlock?.(dataUrl, addAnchor);
+        this.fileInput.value = "";
+        return;
+      }
+
       this.withMutation(item, () => {
         this.applyImageSource(item, dataUrl);
       }, "Replace image");
@@ -401,6 +410,13 @@ lockFrameElement(frame, width, height) {
 
 lockImageContent(item, size) {
       const image = item.element;
+      setImportantStyle(image, "position", "static");
+      setImportantStyle(image, "inset", "auto");
+      setImportantStyle(image, "left", "auto");
+      setImportantStyle(image, "top", "auto");
+      setImportantStyle(image, "right", "auto");
+      setImportantStyle(image, "bottom", "auto");
+      setImportantStyle(image, "margin", "0");
       setImportantStyle(image, "display", "block");
       setImportantStyle(image, "width", "100%");
       setImportantStyle(image, "height", "100%");
@@ -498,6 +514,11 @@ resetSelectedImage() {
         return;
       }
 
+      if (this.addedItems?.has(item.id)) {
+        this.resetAddedImage(item);
+        return;
+      }
+
       const original = this.originalStates.get(item.id);
       if (!original) {
         return;
@@ -508,6 +529,37 @@ resetSelectedImage() {
         this.imageAdjustments.delete(item.id);
       }, "Reset image");
       this.modified.delete(item.id);
+      this.toast(this.t("imageReset"));
+    },
+
+resetAddedImage(item) {
+      const record = this.addedItems?.get(item.id);
+      const original = record?.initialState;
+      if (!record || !original) {
+        return;
+      }
+
+      const root = this.addedRootForItem?.(item);
+      const image = item.element;
+      if (root && root !== image && root.matches?.("[data-hsm-image-frame]")) {
+        root.parentElement?.insertBefore(image, root);
+        root.remove();
+        item.frameElement = image;
+      }
+
+      this.withMutation(item, () => {
+        this.restoreState(item, original);
+        item.frameElement = image;
+        record.element = image;
+        record.parentElement = image.parentElement || record.parentElement;
+        this.imageAdjustments.delete(item.id);
+        this.layoutAdjustments?.delete(item.id);
+      }, "Reset inserted image");
+
+      this.addedItems.set(item.id, record);
+      this.markAddedItemModified?.(item);
+      this.scan();
+      this.selectItem(item.id);
       this.toast(this.t("imageReset"));
     }
   };

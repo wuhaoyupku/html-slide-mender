@@ -11,6 +11,7 @@ export const CONTENT_SCRIPT_FILES = [
   "src/content/modules/scanner.js",
   "src/content/modules/text.js",
   "src/content/modules/image.js",
+  "src/content/modules/insert.js",
   "src/content/modules/layout.js",
   "src/content/modules/history.js",
   "src/content/modules/exporter.js",

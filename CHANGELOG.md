@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.12
+
+- Added toolbar actions for inserting new text blocks and new images.
+- Source-based `basic` export now writes inserted text/images back into the original HTML.
+
+## 0.1.11
+
+- Renamed the public ClawHub listing, skill title, and visible descriptions to HTML Mender.
+
 ## 0.1.10
 
 - Added temporary multi-selection in layout mode using `Shift` / `Cmd` / `Ctrl` click.
@@ -30,5 +39,5 @@
 
 ## 0.1.6
 
-- Published the initial HTML Mender skill and browser-extension workflow under its original HTML Slide Mender name.
+- Published the initial HTML Mender skill and browser-extension workflow.
 - Supported local HTML deck injection, visual text editing, image replacement, and clean source-based HTML export.

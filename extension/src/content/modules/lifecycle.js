@@ -267,6 +267,12 @@ async handleAction(action) {
         case "redo":
           this.redo();
           return;
+        case "add-text":
+          this.addTextBlock?.();
+          return;
+        case "add-image":
+          this.addImageBlock?.();
+          return;
         case "download":
           await this.download();
           return;

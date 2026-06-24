@@ -1271,6 +1271,137 @@ try {
   }
 
   await page.evaluate(() => {
+    window.__htmlSlideMenderBootstrap.editor.addTextBlock();
+  });
+  await page.waitForFunction(() => document.querySelector("[data-hsm-added='text']")?.isContentEditable);
+  await page.keyboard.press("Control+A");
+  await page.keyboard.type("Inserted smoke text");
+  await page.keyboard.press("Escape");
+
+  const insertedAspectImage = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' width='300' height='600' viewBox='0 0 300 600'><rect width='300' height='600' fill='#1f6fff'/><circle cx='150' cy='160' r='92' fill='#f5c84c'/></svg>"
+  );
+  await page.evaluate(async (dataUrl) => {
+    await window.__htmlSlideMenderBootstrap.editor.insertImageBlock(dataUrl);
+  }, insertedAspectImage);
+  await page.waitForFunction(() => document.querySelector("[data-hsm-added='image']")?.src.startsWith("data:image/svg+xml"));
+  const insertedImageAspect = await page.evaluate(() => {
+    const image = document.querySelector("[data-hsm-added='image']");
+    const rect = image.getBoundingClientRect();
+    return {
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      ratio: rect.width / rect.height
+    };
+  });
+  if (Math.abs(insertedImageAspect.ratio - 0.5) > 0.03) {
+    throw new Error(`Inserted image frame did not preserve source aspect ratio: ${JSON.stringify(insertedImageAspect)}`);
+  }
+
+  await page.evaluate(() => {
+    const editor = window.__htmlSlideMenderBootstrap.editor;
+    const addedImage = document.querySelector("[data-hsm-added='image']");
+    const item = Array.from(editor.items.values()).find((candidate) => candidate.element === addedImage);
+    editor.selectItem(item.id);
+    editor.resetSelectedImage();
+  });
+  const addImageReplacePoint = await imageReplaceButtonPoint(page);
+  const addImageReplaceChooserPromise = page.waitForEvent("filechooser");
+  await page.mouse.click(addImageReplacePoint.x, addImageReplacePoint.y);
+  const addImageReplaceChooser = await addImageReplaceChooserPromise;
+  await addImageReplaceChooser.setFiles({
+    name: "inserted-replacement.png",
+    mimeType: "image/png",
+    buffer: replacementPng
+  });
+  const addedReplacementState = await page.waitForFunction(() => {
+    const image = document.querySelector("[data-hsm-added='image']");
+    if (!image?.src.startsWith("data:image/png")) {
+      return false;
+    }
+    const rect = image.getBoundingClientRect();
+    return rect.width > 8 && rect.height > 8 ? {
+      src: image.getAttribute("src") || "",
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      visible: getComputedStyle(image).display !== "none"
+    } : false;
+  }).then((handle) => handle.jsonValue());
+
+  if (!addedReplacementState.visible) {
+    throw new Error(`Inserted image disappeared after reset + replace: ${JSON.stringify(addedReplacementState)}`);
+  }
+
+  const addedImageResizeState = await page.evaluate(() => {
+    const editor = window.__htmlSlideMenderBootstrap.editor;
+    const image = document.querySelector("[data-hsm-added='image']");
+    const item = Array.from(editor.items.values()).find((candidate) => candidate.element === image);
+    editor.selectItem(item.id);
+    editor.setEditorMode("layout");
+    const adjustment = editor.layoutAdjustmentFor(item);
+    const target = adjustment.target;
+    const before = target.getBoundingClientRect();
+    editor.ensureLayoutSizeBase(adjustment, { width: true, height: true });
+    adjustment.width = before.width + 48;
+    adjustment.height = before.height + 24;
+    editor.applyLayoutSizeAdjustment(item, adjustment);
+    const after = target.getBoundingClientRect();
+    target.style.left = "24px";
+    target.style.top = "16px";
+    editor.setEditorMode("content");
+    return {
+      before: { width: Math.round(before.width), height: Math.round(before.height) },
+      after: { width: Math.round(after.width), height: Math.round(after.height) },
+      minWidth: target.style.minWidth,
+      maxWidth: target.style.maxWidth,
+      frameWidth: image.style.getPropertyValue("--hsm-frame-width"),
+      frameHeight: image.style.getPropertyValue("--hsm-frame-height")
+    };
+  });
+
+  if (
+    addedImageResizeState.after.width <= addedImageResizeState.before.width ||
+    addedImageResizeState.after.height <= addedImageResizeState.before.height
+  ) {
+    throw new Error(`Inserted image frame resize did not apply: ${JSON.stringify(addedImageResizeState)}`);
+  }
+
+  const addedElementState = await page.evaluate(() => {
+    const editor = window.__htmlSlideMenderBootstrap.editor;
+    editor.undo();
+    editor.scan();
+    const imageAfterUndo = Boolean(document.querySelector("[data-hsm-added='image']"));
+    editor.redo();
+    editor.scan();
+    const text = document.querySelector("[data-hsm-added='text']");
+    const image = document.querySelector("[data-hsm-added='image']");
+    const stats = editor.modifiedStats();
+    return {
+      text: text?.textContent || "",
+      imageRestored: Boolean(image?.isConnected),
+      imageAfterUndo,
+      addedItems: editor.addedItems.size,
+      changed: stats.total
+    };
+  });
+
+  if (!addedElementState.text.includes("Inserted smoke text") || !addedElementState.imageRestored || !addedElementState.imageAfterUndo) {
+    throw new Error(`Added text/image creation or undo/redo failed: ${JSON.stringify(addedElementState)}`);
+  }
+  if (addedElementState.addedItems < 2 || addedElementState.changed < 2) {
+    throw new Error(`Added elements were not tracked as exportable changes: ${JSON.stringify(addedElementState)}`);
+  }
+
+  await page.evaluate(() => {
+    const image = document.querySelector("[data-hsm-added='image']");
+    const root = image?.parentElement?.matches?.("[data-hsm-image-frame]") ? image.parentElement : image;
+    if (root) {
+      root.style.left = "24px";
+      root.style.top = "16px";
+    }
+  });
+
+  await page.evaluate(() => {
     document.querySelector("[data-go='1']")?.click();
   });
 
@@ -1322,6 +1453,18 @@ try {
     throw new Error("Basic export did not include the replacement image from the edited source content.");
   }
 
+  if (!exported.includes("Inserted smoke text")) {
+    throw new Error("Basic export did not include newly inserted text.");
+  }
+
+  if (!/body[\s\S]*<img[^>]+src=["']data:image\/png/i.test(exported)) {
+    throw new Error("Basic export did not include the newly inserted image in source HTML.");
+  }
+
+  if (/data-hsm-added|data-hsm-added-id|data-hsm-image-frame/i.test(exported)) {
+    throw new Error("Basic export leaked editor-only inserted-element markers.");
+  }
+
   if (/id=["']generated-dots["'][\s\S]*?<button/i.test(exported)) {
     throw new Error("Basic export saved runtime-generated slide navigation buttons.");
   }
@@ -1338,7 +1481,9 @@ try {
       slideCount: document.querySelectorAll("#deck > .slide").length,
       generatedDotCount: document.querySelectorAll("#generated-dots button").length,
       initialTransform: document.querySelector("#deck")?.style.transform || "",
-      paragraphLineHeight: document.querySelector("p")?.style.lineHeight || ""
+      paragraphLineHeight: document.querySelector("p")?.style.lineHeight || "",
+      insertedText: document.body.textContent.includes("Inserted smoke text"),
+      dataPngImages: document.querySelectorAll("img[src^='data:image/png']").length
     }));
 
     if (
@@ -1351,6 +1496,9 @@ try {
     }
     if (exportedDeckBefore.paragraphLineHeight !== "1.3") {
       throw new Error(`Downloaded HTML did not keep edited text styles: ${JSON.stringify(exportedDeckBefore)}`);
+    }
+    if (!exportedDeckBefore.insertedText || exportedDeckBefore.dataPngImages < 2) {
+      throw new Error(`Downloaded HTML did not keep inserted text/image elements: ${JSON.stringify(exportedDeckBefore)}`);
     }
 
     await exportedPage.click("[data-go='1']");

@@ -37,6 +37,8 @@
       this.imageAdjustments = new Map();
       this.layoutAdjustments = new Map();
       this.pendingImageReplaceId = null;
+      this.pendingImageAddAnchor = null;
+      this.addedItems = new Map();
       this.originalStates = new Map();
       this.modified = new Map();
       this.undoStack = [];
@@ -60,6 +62,7 @@
     ns.mixins.scanner,
     ns.mixins.text,
     ns.mixins.image,
+    ns.mixins.insert,
     ns.mixins.layout,
     ns.mixins.history,
     ns.mixins.exporter,

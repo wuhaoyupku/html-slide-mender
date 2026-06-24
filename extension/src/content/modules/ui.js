@@ -838,6 +838,8 @@ template() {
             <div class="group group-default">
               <button type="button" data-action="undo">${escapeHtml(this.t("undo"))}</button>
               <button type="button" data-action="redo">${escapeHtml(this.t("redo"))}</button>
+              <button type="button" data-action="add-text">${escapeHtml(this.t("addText"))}</button>
+              <button type="button" data-action="add-image">${escapeHtml(this.t("addImage"))}</button>
               <button type="button" data-action="rescan">${escapeHtml(this.t("rescan"))}</button>
               <button type="button" data-action="toggle-boxes" aria-pressed="${this.showBoxes ? "true" : "false"}">${escapeHtml(this.showBoxes ? this.t("boxesOn") : this.t("boxesOff"))}</button>
               <button type="button" data-action="language">${escapeHtml(this.t("language"))}</button>
