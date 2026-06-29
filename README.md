@@ -71,6 +71,11 @@ node skills/html-slide-mender/scripts/inject-html-editor.mjs /absolute/path/inpu
 
 ## 版本说明
 
+### 0.1.14
+
+- 优化中文搜索和触发描述，覆盖 `HTML 编辑`、`PPT 编辑`、`HTML PPT 编辑`、`网页编辑`、`演示稿编辑`、`幻灯片编辑` 等常见搜索词。
+- 保持技能范围明确限定在本地或已保存的 HTML 文件，继续排除在线网站、需要登录的页面、通用源码编辑和 PPTX 文件。
+
 ### 0.1.13
 
 - 默认文字/图片编辑模式新增直接边框操作。
@@ -216,6 +221,11 @@ Load the extension locally:
 5. Open an HTML deck and click the extension action.
 
 ## Release Notes
+
+### 0.1.14
+
+- Improved Chinese search and trigger wording for terms such as `HTML 编辑`, `PPT 编辑`, `HTML PPT 编辑`, `网页编辑`, `演示稿编辑`, and `幻灯片编辑`.
+- Kept the skill scope explicitly limited to local or saved HTML files and preserved the exclusions for live websites, authenticated online pages, generic source-code edits, and PPTX files.
 
 ### 0.1.13
 

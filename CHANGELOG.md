@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.14
+
+- Improved Chinese search coverage for terms such as `HTML 编辑`, `PPT 编辑`, `HTML PPT 编辑`, `网页编辑`, `演示稿编辑`, and `幻灯片编辑`.
+- Kept the skill description scoped to local or saved HTML files and preserved the explicit exclusions for live websites, authenticated online pages, generic source-code edits, and PPTX files.
+
 ## 0.1.13
 
 - Added content-mode direct layout handles for selected text and image elements.

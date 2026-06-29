@@ -1,6 +1,6 @@
 ---
 name: html-mender
-description: Visual editor for local or saved HTML files, especially HTML PPTs, AI-generated presentation pages, one-page web slide decks, and dynamic JavaScript slide pages. Use this skill whenever the user wants to make a local HTML editable, edit or modify an HTML PPT, fix text, add text/images, replace images, adjust layout/position/size, move/scale/resize/stretch a title/image/card/block, or says phrases like “修改这个 HTML”, “HTML PPT 可编辑”, “标题往上一点”, “调整版面”, or “改宽高”. Clean export patches text/images/backgrounds/layout styles back into the original source HTML instead of saving runtime DOM. Do not use for live websites, authenticated online pages, generic source-code edits, or PPTX/PowerPoint files; ask for a saved local HTML copy first.
+description: Visual editor for local or saved HTML files, especially HTML PPTs, AI-generated presentation pages, one-page web slide decks, and dynamic JavaScript slide pages. Use this skill whenever the user wants HTML 编辑, HTML编辑, PPT 编辑, PPT编辑, HTML PPT 编辑, 网页编辑, 演示稿编辑, 幻灯片编辑, or wants to make a local HTML editable, edit or modify an HTML PPT, fix text, add text/images, replace images, adjust layout/position/size, move/scale/resize/stretch a title/image/card/block, or says phrases like “修改这个 HTML”, “HTML PPT 可编辑”, “标题往上一点”, “调整版面”, or “改宽高”. Clean export patches text/images/backgrounds/layout styles back into the original source HTML instead of saving runtime DOM. Do not use for live websites, authenticated online pages, generic source-code edits, or PPTX/PowerPoint files; ask for a saved local HTML copy first.
 metadata:
   openclaw:
     homepage: https://github.com/wuhaoyupku/html-mender
@@ -59,6 +59,11 @@ node scripts/inject-html-editor.mjs <input.html> \
 - If the editable page appears unstyled, regenerate it beside the original HTML so relative paths resolve.
 
 ## Version Notes
+
+### 0.1.14
+
+- Improves Chinese search and trigger wording for `HTML 编辑`, `PPT 编辑`, `HTML PPT 编辑`, `网页编辑`, `演示稿编辑`, and `幻灯片编辑`.
+- Keeps the skill scope explicitly limited to local or saved HTML files and excludes live websites, authenticated online pages, generic source-code edits, and PPTX files.
 
 ### 0.1.13
 
